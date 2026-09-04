@@ -1,0 +1,183 @@
+import { UserInputError } from "./errors.js";
+
+/**
+ * Centralized input validation. Every user-controlled value passes
+ * through one of these BEFORE any embed is built — never trust the
+ * client to have pre-filtered it.
+ */
+
+export interface ParsedArgs {
+  /** Positional tokens (quotes consumed, escaping resolved). */
+  args: string[];
+  /** The full raw remainder after the command name, verbatim. */
+  rest: string;
+}
+
+/**
+ * Splits a prefix command's argument string on whitespace, but
+ * keeps double-quoted sections ("like this") as single tokens.
+ * Backslash escapes inside quotes: \" -> ", \\ -> \.
+ *
+ * Malformed quoting falls back to whitespace splitting with the
+ * quotes left literal — a typo'd quote must never crash dispatch.
+ */
+export function parseQuotedArgs(input: string): ParsedArgs {
+  const raw = input;
+  const tokens: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  let wasQuoted = false;
+  let any = false;
+
+  const push = () => {
+    if (current.length > 0 || wasQuoted) {
+      tokens.push(current);
+      current = "";
+      wasQuoted = false;
+      any = true;
+    }
+  };
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+
+    if (ch === "\\" && inQuotes && (raw[i + 1] === '"' || raw[i + 1] === "\\")) {
+      current += raw[i + 1];
+      i++;
+      continue;
+    }
+
+    if (ch === '"') {
+      if (inQuotes) {
+        // closing quote
+        inQuotes = false;
+        wasQuoted = true;
+      } else {
+        inQuotes = true;
+        wasQuoted = true;
+        // An opening quote mid-token acts as a token boundary.
+        if (current.length > 0) push();
+      }
+      continue;
+    }
+
+    if (!inQuotes && /\s/.test(ch)) {
+      push();
+      continue;
+    }
+
+    current += ch;
+  }
+
+  // Unterminated quote: treat accumulated content as one token.
+  push();
+
+  if (!any && tokens.length === 0) {
+    return { args: [], rest: raw.trim() };
+  }
+
+  const restStart = raw.length - raw.trimStart().length;
+  return { args: tokens, rest: raw.slice(restStart).trim() };
+}
+
+/** True if the string is a plausible Discord snowflake (ID). */
+export function isSnowflake(value: string): boolean {
+  return /^\d{15,20}$/.test(value);
+}
+
+/** Strips a user mention to the raw ID: <@123> or <@!123> -> 123. */
+export function mentionToId(value: string): string {
+  return value.replace(/[<@!>]/g, "");
+}
+
+/**
+ * Resolves a "user target" argument: mention, bare ID, or null.
+ * Throws UserInputError (with usage) on garbage input.
+ */
+export function parseUserTarget(rawArg: string | undefined, usage: string): string {
+  if (!rawArg) throw new UserInputError("You need to give me a user.", usage);
+  const id = mentionToId(rawArg);
+  if (!isSnowflake(id)) {
+    throw new UserInputError(`\`${rawArg}\` doesn't look like a valid user mention or ID.`, usage);
+  }
+  return id;
+}
+
+/**
+ * Parses a duration into milliseconds. Supports single units
+ * ("10m", "2d") and combined descending units ("1h30m", "2d4h").
+ * Bare numbers are rejected as ambiguous. Returns null for
+ * unparseable input, 0-safe (positive result only).
+ */
+export function parseDuration(input: string): number | null {
+  const units: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+  const order = ["d", "h", "m", "s"]; // must appear in this order at most once each
+  const trimmed = input.trim().toLowerCase();
+
+  if (!/^\d+[smhd]([0-9]+[smhd])*$/.test(trimmed)) return null;
+
+  let total = 0;
+  let lastUnitIndex = -1;
+  const parts = trimmed.match(/\d+[smhd]/g) ?? [];
+  for (const part of parts) {
+    const value = Number(part.slice(0, -1));
+    const unit = part.slice(-1);
+    const unitIndex = order.indexOf(unit);
+    if (unitIndex === -1) return null;
+    // Combined durations must be descending (1h30m ok, 30m1h invalid).
+    if (parts.length > 1 && unitIndex <= lastUnitIndex) return null;
+    lastUnitIndex = unitIndex;
+    total += value * units[unit];
+  }
+  return total > 0 ? total : null;
+}
+
+/** Parses an integer within [min, max]; throws UserInputError otherwise. */
+export function parseIntInRange(raw: string, min: number, max: number, label: string, usage?: string): number {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new UserInputError(`\`${raw}\` isn't a valid ${label} — it must be a whole number between ${min} and ${max}.`, usage);
+  }
+  return value;
+}
+
+/**
+ * Makes user-provided text safe to embed inside bold markdown
+ * (a literal ** would otherwise terminate the bold early).
+ */
+export function escapeMarkdownBold(text: string): string {
+  return text.replace(/\*\*/g, "*\u200b*").replace(/__/g, "_\u200b_");
+}
+
+/**
+ * Makes user-provided text safe to echo in normal (non-code) embed
+ * text: neutralizes mass-mention keywords and strips invisible /
+ * control characters that enable formatting and spam tricks.
+ *
+ * Order matters: invisible characters are stripped FIRST, then the
+ * mention is broken with a zero-width space — doing it the other
+ * way around would strip the very character that breaks the ping.
+ */
+export function sanitizeEcho(text: string): string {
+  return text
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200D\u2060\uFEFF]/g, "")
+    .replace(/@(everyone|here)/gi, "@\u200b$1");
+}
+
+/** Safe code-block content: backticks can't close the block early. */
+export function escapeCodeBlock(text: string): string {
+  return text.replace(/`/g, "'");
+}
+
+/** Truncates on a logical boundary (last space) rather than mid-word. */
+export function truncate(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  const cut = text.slice(0, maxLength - 1);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${lastSpace > maxLength / 2 ? cut.slice(0, lastSpace) : cut}…`;
+}
+
+/** Full pipeline for user text echoed inside bold markers. */
+export function safeBoldText(text: string): string {
+  return escapeMarkdownBold(sanitizeEcho(text));
+}

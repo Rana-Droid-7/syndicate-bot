@@ -1,0 +1,31 @@
+# ===== Secrets — NEVER commit =====
+.env
+.env.*
+!.env.example
+
+# ===== Dependencies =====
+node_modules/
+
+# ===== Build output =====
+dist/
+
+# ===== Runtime data (SQLite database, WAL/SHM files, suggestion export) =====
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== OS junk =====
+.DS_Store
+Thumbs.db
+
+# ===== Editor/IDE junk =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

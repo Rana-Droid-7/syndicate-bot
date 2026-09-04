@@ -1,0 +1,114 @@
+import type { Client } from "discord.js";
+import { reminderRepository, type ReminderRow } from "../repositories/reminders.js";
+import { safeSetTimeout } from "../lib/safeTimeout.js";
+import { log } from "../core/logger.js";
+
+const MAX_DELAY_MS = 30 * 24 * 60 * 60 * 1000; // 30-day cap, matches command validation
+const SWEEP_INTERVAL_MS = 60_000; // periodic due-check, safety net for missed timers
+
+// Set on shutdown: in-flight timers must not touch the closed DB.
+let shuttingDown = false;
+
+/**
+ * Reminder service. DB rows are the source of truth: a timer firing
+ * delivers and marks the row; a restart reschedules every pending
+ * row from the database. Timers alone could be lost to a crash —
+ * the row is the promise.
+ */
+export const reminderService = {
+  /** Called on every shutdown path BEFORE the DB closes. */
+  beginShutdown(): void {
+    shuttingDown = true;
+  },
+
+  schedule(client: Client, row: ReminderRow): void {
+    if (shuttingDown) return;
+    const delay = Math.max(0, row.due_unix_ms - Date.now());
+    log.info("TIMER", `Reminder #${row.id} for ${row.user_id} scheduled — firing in ${delay}ms.`);
+    safeSetTimeout(() => {
+      void deliver(client, row.id);
+    }, delay);
+  },
+
+  async create(
+    client: Client,
+    guildId: string,
+    channelId: string,
+    userId: string,
+    content: string,
+    dueUnixMs: number,
+  ): Promise<number> {
+    const id = reminderRepository.create(guildId, channelId, userId, content, dueUnixMs);
+    const row = reminderRepository.get(id);
+    if (row) this.schedule(client, row);
+    else log.error("TIMER", `Reminder #${id} vanished after insert — not scheduled.`);
+    return id;
+  },
+
+  /** Startup pass: reschedule everything still pending. */
+  restore(client: Client): number {
+    const pending = reminderRepository.pending();
+    const now = Date.now();
+    let overdue = 0;
+    for (const row of pending) {
+      if (row.due_unix_ms <= now) overdue++;
+      this.schedule(client, row);
+    }
+    if (pending.length > 0) {
+      log.info("TIMER", `Restored ${pending.length} pending reminder(s) (${overdue} overdue — firing immediately).`);
+    }
+    return pending.length;
+  },
+
+  /** Periodic safety net — delivers anything the timers somehow missed. */
+  startSweep(client: Client): void {
+    setInterval(() => {
+      if (shuttingDown) return;
+      try {
+        for (const row of reminderRepository.due(Date.now())) {
+          log.warn("TIMER", `Sweep found overdue reminder #${row.id} — delivering.`);
+          void deliver(client, row.id);
+        }
+      } catch (error) {
+        // DB closed between the shutdown flag and here — stand down.
+        log.debug("TIMER", "Sweep skipped (storage unavailable).");
+      }
+    }, SWEEP_INTERVAL_MS).unref();
+  },
+};
+
+async function deliver(client: Client, id: number): Promise<void> {
+  // Shutdown in progress — the DB may already be closed. The row
+  // stays pending and the next startup's restore pass reschedules
+  // it, so nothing is lost by standing down here.
+  if (shuttingDown) return;
+
+  let reminder: ReminderRow | null;
+  try {
+    reminder = reminderRepository.get(id);
+  } catch (error) {
+    // DB closed/unavailable between the check above and here — the
+    // sweep on next boot handles it. Never crash the process.
+    log.warn("TIMER", `Reminder #${id} could not be read (storage closing?) — deferring to next startup.`, error);
+    return;
+  }
+  if (!reminder || reminder.status !== "pending") return;
+
+  const channel = await client.channels.fetch(reminder.channel_id).catch(() => null);
+  if (!channel || !channel.isTextBased() || !("send" in channel)) {
+    log.warn("TIMER", `Reminder #${id} undeliverable — channel ${reminder.channel_id} gone. Marking failed.`);
+    reminderRepository.markFailed(id);
+    return;
+  }
+
+  try {
+    await channel.send(`⏰ <@${reminder.user_id}>, reminder: **${reminder.content}**`);
+    reminderRepository.markDelivered(id);
+    log.info("TIMER", `Delivered reminder #${id} to ${reminder.user_id} in channel ${reminder.channel_id}.`);
+  } catch (error) {
+    log.error("TIMER", `Failed to deliver reminder #${id}`, error);
+    reminderRepository.markFailed(id);
+  }
+}
+
+export const reminderConstants = { MAX_DELAY_MS };
