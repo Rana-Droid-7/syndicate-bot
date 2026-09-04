@@ -1,93 +1,144 @@
-# Discord Bot Syndicate
+# Syndicate Bot — v0.5.0-beta
 
+A polished Discord bot: utility, fun ("Coolsies"), moderation, admin,
+and developer tiers — built with discord.js + TypeScript on a real
+SQL database.
 
+v0.5.0 is a ground-up engineering release: **persistent storage**
+(SQLite — AFK, reminders, warnings, suggestions, and jokes now
+survive restarts and crashes), a **new Coolsies category** (dice,
+coinflip, 8-ball, choose, random, rate, jokes), **`>` as the primary
+interface** for public commands (slash is reserved for
+moderation/admin/developer tools that need structured input and
+native permission gating), **per-user cooldowns**, quoted-argument
+parsing, a typed **error taxonomy** that renders clean messages with
+correct usage, and **load-time command validation** that refuses to
+boot on broken definitions.
 
-## Getting started
+## Setup
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+1. Install dependencies:
+   ```
+   npm install
+   ```
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+2. Copy `.env.example` to `.env` and fill in your values:
+   ```
+   cp .env.example .env
+   ```
+   - `DISCORD_TOKEN` — your bot's token
+   - `CLIENT_ID` — your application's client ID
+   - `DEV_GUILD_ID` — (recommended) test server ID for instant slash registration
+   - `OWNER_ID` — your Discord user ID; counted as a developer automatically
+   - `DEVELOPER_IDS` — comma-separated user IDs trusted with `/boot`, joke management, etc.
+   - `DEV_LOG_CHANNEL_ID` — (optional) lifecycle announcements + error embeds
+   - `BOT_LOG_CHANNEL_ID` — (optional) **private** verbose operational feed
+   - `PREFIX` — prefix for public commands (default `>`)
+   - `DATABASE_FILE` — SQLite path (default `data/syndicate.db`)
 
-## Add your files
+3. Register the (moderation/admin/developer + a few utility) slash commands:
+   ```
+   npm run deploy-commands
+   ```
+   Run again whenever a slash command changes. Public commands live on `>` and don't need this.
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+4. Run:
+   ```
+   npm run dev          # dev, auto-restart on changes
+   npm run build && npm start   # production
+   ```
+
+5. Test:
+   ```
+   npm test
+   ```
+
+The database (schema + migrations) is created automatically on
+first boot — no manual SQL step.
+
+## The two surfaces
+
+| Surface | Who uses it | Why |
+|---|---|---|
+| `>` prefix | Everyone, for public commands | Visible in chat, works everywhere, zero Discord UI lag |
+| `/` slash | Moderators, admins, developers | Structured input (user pickers, durations) + Discord-native permission gating |
+
+Trying a slash-only command via `>` (e.g. `>kick`) gets a styled
+explanation with its correct usage — never silence. Unknown prefix
+input gets a **starts-with lookup** (`>se` → serverinfo, setnick,
+userinfo...) or a **typo suggestion** (`>halp` → "did you mean
+**>help**?").
+
+## Commands (v0.5.0-beta)
+
+### 🛠️ Utility — `>`, open to everyone
+`help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` — plus right-click **User Info** and **Avatar** context commands.
+
+### 🎉 Coolsies — `>` and `/`, open to everyone
+`dice`, `coinflip`, `8ball`, `choose`, `random`, `rate`, `joke say` — and `joke add/list/remove/edit/enable/disable` for developers (strictly trusted-ID-gated, never roles).
+
+### 🛡️ Moderation — slash-only, requires the matching Discord permission
+`/kick`, `/ban`, `/timeout`, `/warn add|list|clear`, `/purge`
+
+### 🔧 Admin — slash-only, requires Administrator
+`/announce`, `/setnick`, `/slowmode`
+
+### 🔑 Developer — slash-only, trusted user IDs only
+`/boot` — DMs you a private Reboot/Shutdown/Cancel panel.
+
+## Persistence
+
+SQLite (better-sqlite3, WAL mode, foreign keys on) is the single
+authoritative store. Migrations run automatically on boot and are
+append-only — never edit an applied migration. Repositories own all
+SQL; services own business logic; commands only coordinate.
+
+| Data | Table | Notes |
+|---|---|---|
+| AFK status | `afk` | per-guild, auto-cleared by activity or `>afk off` |
+| Reminders | `reminders` | restored on every startup; a 60s sweep catches strays |
+| Warnings | `warnings` | soft-capped at 25 active per user (oldest roll off, transactionally) |
+| Suggestions | `suggestions` | SQL + human-readable `data/suggestions.txt` export |
+| Jokes | `jokes` | enable/disable, usage counts, developer-attributed |
+
+## Architecture
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/crypticxworld-group/discord-bot-syndicate.git
-git branch -M main
-git push -uf origin main
+src/
+  core/         config, logger (+ private-channel mirror), client
+  commands/     utility/ coolsies/ moderation/ admin/ owner/
+  events/       ready, interactionCreate, messageCreate, guildCreate, guildDelete
+  handlers/     command + event loaders (load-time validation)
+  lib/          embeds, validation, cooldowns, errors, permissions, confirm,
+                safeMath, safeTimeout, suggest, help, usage, format, invite, devlog
+  services/     afk, reminders, warnings, suggestions, jokes  (business logic)
+  repositories/ afk, reminders, warnings, suggestions, jokes  (SQL only)
+  database/     client (WAL, migrations, integrity check)
+  workers/      mathWorker (isolated /calculate thread)
+  tests/        unit tests (npm test)
 ```
 
-## Integrate with your tools
+Command flow: **command → service → repository → database**. Nothing
+else touches SQL.
 
-* [Set up project integrations](https://gitlab.com/crypticxworld-group/discord-bot-syndicate/-/settings/integrations)
+## Safety model
 
-## Collaborate with your team
+- **Developer authorization** = hardcoded trusted user IDs (`DEVELOPER_IDS`), checked in code — roles can never grant it, so no other server's admin can ever control the bot.
+- **Moderation** = shared `canModerate` hierarchy (no self/bot/owner/equal-or-higher targeting; bot role positioned high enough), re-verified *after* confirmation dialogs, not just before.
+- **Every confirmation dialog** collects only the invoker's click, at most once (max:1 + settled guard).
+- **`/calculate`** runs in an isolated worker thread with a 3-second kill timer + blocklist — the DoS vector was real and is dead.
+- **All user text** passes sanitization (mass-mention breaking, invisible-character stripping, markdown-safe escaping) before any embed is built.
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+## Development
 
-## Test and Deploy
+- `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine)
+- `verify_timer.mjs` — chained-timer regression (the >24.8-day setTimeout bug)
+- `verify_lookup.mjs` — prefix lookup/suggestion scenarios
+- Load-time errors are intentional: a duplicate command name or missing metadata refuses to boot the bot instead of silently dropping it.
 
-Use the built-in continuous integration in GitLab.
+## What's next
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- Per-guild feature configuration
+- More Coolsies (trivia, would-you-rather) on the now-solid framework
+- Suggestion review workflow (pending/approved/rejected) surfacing to admins
+- Backup/restore tooling for the database
