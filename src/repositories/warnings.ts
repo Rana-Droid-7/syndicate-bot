@@ -58,7 +58,7 @@ export const warningRepository = {
     ).n;
   },
 
-  /** Total active warnings across all guilds (dashboard status card). */
+  /** Total active warnings across all guilds (status reporting). */
   totalActive(): number {
     return (getDb().prepare(`SELECT COUNT(*) AS n FROM warnings WHERE active = 1`).get() as { n: number }).n;
   },

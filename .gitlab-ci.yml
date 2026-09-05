@@ -19,4 +19,3 @@ verify:
     - node verify_lookup.mjs
     - node verify-dispatcher.mjs
     - node verify-integration.mjs
-    - node verify-dashboard.mjs

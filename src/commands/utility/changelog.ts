@@ -15,6 +15,15 @@ interface ReleaseNotes {
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
   {
+    version: "0.6.3-beta",
+    date: "2026-09-05",
+    highlights: [
+      "**`joke` is simpler** — plain `joke` tells one now, no `say` needed; management verbs unchanged",
+      "**The experimental dashboard was removed** — a better design is planned for a future release",
+      "Everything else carries over: the two-lane prefix/slash rule, the hardened services, 124-check integration harness",
+    ],
+  },
+  {
     version: "0.6.2-beta",
     date: "2026-09-05",
     highlights: [

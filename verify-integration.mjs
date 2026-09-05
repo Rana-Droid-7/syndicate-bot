@@ -255,7 +255,7 @@ console.log("\n=== JOKE ===");
   const PLEB = "222222222222222222";
 
   // public say with empty store
-  let r = await runCommand(J, ">joke say");
+  let r = await runCommand(J, ">joke");
   report("joke: say with empty store -> clean error", r.ok && r.replies.length > 0);
 
   // pleb tries add
@@ -273,7 +273,7 @@ console.log("\n=== JOKE ===");
 
   // say now works and bumps usage (random pick — any enabled row's
   // counter moves, not necessarily the newest one)
-  r = await runCommand(J, ">joke say");
+  r = await runCommand(J, ">joke");
   const anyUsed = jokeRepository.list(100).some((j) => j.usage_count > 0);
   report("joke: say returns joke", r.ok && anyUsed);
 
@@ -299,7 +299,7 @@ console.log("\n=== JOKE ===");
   // enable/disable/remove round trip
   r = await runCommand(J, `>joke disable ${target.id}`, { authorId: DEV });
   report("joke: disable", r.ok && jokeRepository.get(target.id).enabled === 0);
-  r = await runCommand(J, ">joke say");
+  r = await runCommand(J, ">joke");
   report("joke: say skips disabled", r.ok); // (other jokes still serve)
   r = await runCommand(J, `>joke enable ${target.id}`, { authorId: DEV });
   report("joke: enable", r.ok && jokeRepository.get(target.id).enabled === 1);

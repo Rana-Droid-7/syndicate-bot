@@ -1,14 +1,12 @@
-# Syndicate Bot — v0.6.2-beta
+# Syndicate Bot — v0.6.3-beta
 
 A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
 moderation, admin, and developer tiers — built with discord.js +
 TypeScript on a real SQL database.
 
-v0.6.1 polishes the **local management dashboard**: a browser console the
-bot hosts at localhost — manage jokes, 8-ball responses, and
-suggestions; watch live stats; reboot or shut down — all behind
-PBKDF2 auth, rate-limited login, and CSRF-protected sessions, and
-bound to 127.0.0.1 so nothing on the network can reach it.
+v0.6.3 removes the experimental local dashboard (a better one is
+planned) and streamlines the joke command — plain `joke` tells one,
+no `say` needed.
 
 It builds on v0.5.4's two-lane rule: **public commands live
 exclusively on the prefix defined in your `.env`** (default `>`;
@@ -79,13 +77,13 @@ prefix input gets a **starts-with lookup** (`>se` → serverinfo,
 setnick, userinfo...) or a **typo suggestion** (`>halp` → "did you
 mean **>help**?").
 
-## Commands (v0.6.2-beta)
+## Commands (v0.6.3-beta)
 
 ### 🛠️ Utility — prefix only, open to everyone
 `help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `poll`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` (aliases: `calc`, `math`; `whois`, `ui`; `av`, `pfp`; `ts`, and more).
 
 ### 🎉 Coolsies — prefix only, open to everyone
-`dice`, `coinflip`, `8ball`, `choose`, `random`, `rate`, `rps`, `joke say` — and `joke add/list/remove/edit/enable/disable` for developers (strictly trusted-ID-gated, never roles). Same for `8ball`'s response pool management.
+`dice`, `coinflip`, `8ball`, `choose`, `random`, `rate`, `rps`, `joke` — and `joke add/list/remove/edit/enable/disable` for developers (strictly trusted-ID-gated, never roles). Same for `8ball`'s response pool management.
 
 ### 🛡️ Moderation — slash only, requires the matching Discord permission
 `/kick`, `/ban`, `/timeout`, `/warn add|list|clear`, `/purge`
@@ -95,26 +93,6 @@ mean **>help**?").
 
 ### 🔑 Developer — slash only, trusted user IDs only
 `/boot` — DMs you a private Reboot/Shutdown/Cancel panel.
-
-## Local dashboard (v0.6)
-
-A browser-based management console, hosted by the bot itself —
-**localhost only** (binds 127.0.0.1; nothing on the network can reach
-it). Password-gated with PBKDF2, sessions with CSRF tokens, login
-rate-limiting, and every action runs through the same service layer
-the Discord commands use.
-
-```bash
-npm run hash-password          # generate your dashboard password hash → paste into .env
-# .env: DASHBOARD_ENABLED=true  +  DASHBOARD_PASSWORD_HASH=pbkdf2$...
-npm start                      # dashboard at http://127.0.0.1:3721
-```
-
-From there: manage jokes and 8-ball responses (add / edit / enable /
-disable / remove), review suggestions (approve / reject / implement),
-watch live stats (guilds, members, uptime, warnings, AFK, pending
-reminders), and reboot/shutdown the process — the same actions as
-`/boot`, from your browser.
 
 ## Persistence
 

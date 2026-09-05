@@ -20,7 +20,7 @@ const edgeInputs = [
   "> nonexistent", ">ünïcödé", ">".repeat(50), ">a".repeat(30),
   ">" + "x".repeat(2000), ">joke", ">afk", ">suggest", ">remindme",
   ">booot", ">kik", '>"quoted start', '>unterminated "quote',
-  ">joke say extra args here", ">8ball", ">choose", ">random",
+  ">joke", ">joke add \"x\"", ">8ball", ">choose", ">random",
 ];
 
 let crashes = 0;

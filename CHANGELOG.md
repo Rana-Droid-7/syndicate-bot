@@ -2,6 +2,19 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
 
+## v0.6.3-beta — 2026-09-05 (dashboard removed + joke streamlined)
+
+### Removed
+- **The experimental local dashboard is gone, entirely.** The `src/web/` module (server, auth, pages), `verify-dashboard.mjs` (its 43-check security harness), `scripts/hash-password.mjs`, the `DASHBOARD_*` config surface, `.env`/`.env.example` documentation, CI steps on both GitHub and GitLab, and the README section — all removed. A better dashboard design is planned for a future release; the two strict scenario-audit cycles it went through (and the hardening lessons from them) are preserved in the changelog history and will apply to the rebuild.
+- `suggestionRepository.recent()` and `setStatus()` — dashboard-only consumers, removed with it (the future review workflow will reintroduce them).
+
+### Changed
+- **`joke` tells one now** — plain `joke` (no `say`) pulls a random joke; the management verbs (add/list/remove/edit/enable/disable) are unchanged and still developer-gated. Usage/examples/help updated everywhere; unknown subcommands get a pointer back to plain `joke`.
+
+### Kept
+- `lib/shutdown.ts` (the unified graceful-exit path) — it serves `/boot` and the OS-signal handlers.
+- `warningRepository.totalActive()` — status reporting will need it regardless of UI.
+
 ## v0.6.2-beta — 2026-09-05 (two strict scenario-audit cycles)
 
 Every category, command, and surface probed with usage/abuse/spam scenarios; raw-socket and concurrency attacks against the dashboard.
