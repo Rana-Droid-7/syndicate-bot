@@ -177,7 +177,7 @@ const event: BotEvent<"messageCreate"> = {
 
     // ---- slash-only attempts: explain with usage ----
     const slashOnly = client.slashCommands.get(commandName);
-    if (client.slashOnlyCommands.has(commandName) && slashOnly && !("contextMenu" in slashOnly)) {
+    if (client.slashOnlyCommands.has(commandName) && slashOnly) {
       log.debug("PREFIX", `${config.prefix}${commandName} is slash-only — replying with an explanation.`);
       const cmd = slashOnly as { usage: string; category: string };
       await message

@@ -2,6 +2,24 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
 
+## v1.0.0 — 2026-09-05 🎉
+
+**The first stable release.** Six beta versions, five strict audit cycles, one removed-and-relearning dashboard later — the architecture is settled, every surface is verified, and the version number drops its suffix for good.
+
+### Why 1.0 now
+- **Two-lane architecture, proven**: public commands live exclusively on the env-configured prefix (one character, boot-validated, dynamic everywhere); moderation/admin/developer tools live exclusively on native slash with Discord's permission gating. The loader enforces the split — violations refuse to boot.
+- **Five full audit cycles**, each one adversarial against the last: bug hunts (15+ fixes), scenario testing (raw-socket floods, 30-way concurrency, spam matrices, hierarchy abuse), per-file manual confirmation, database contract verification, and import-graph validation (315 edges, all resolve).
+- **A complete test pyramid**: 35 unit tests, 124 integration/attack checks, 24 lookup-engine checks, dispatcher edge-case torture, chained-timer regression — all wired into `npm run verify` and CI on both GitHub and GitLab.
+- **Zero known defects** across the final three consecutive audit cycles.
+
+### Final hardening (this release)
+- **Context-command scaffolding fully excised**: the `UserContextCommand` type, loader branch, dispatcher routing, and help-menu renderings for right-click commands (removed from the product in 0.5.4) are gone from the codebase — dead branches deleted, not commented out.
+- Stale comment on the command registry corrected (it described the pre-0.5.4 collection).
+- Dead-code sweep round 6: `parseUserTarget`, `parseDuration` (tested but never used in production paths), `reminderConstants` removed; internal `say()` renamed `tellOne` for truth-in-code.
+
+### The bot, in one paragraph
+25 prefix commands across Utility (help, ping, bot, invite, changelog, suggest, afk, remindme, poll, userinfo, serverinfo, avatar, banner, timestamp, snowflake, roll, calculate) and Coolsies (dice, coinflip, 8-ball with a developer-managed response pool, choose, random, rate, rock-paper-scissors, jokes with a developer-managed collection) — every one with a proper description, a rich `help <command>` guide, cooldowns, and quote-aware parsing. Nine slash commands for the privileged lane: kick, ban, timeout, warn, purge (moderation), announce, setnick, slowmode (admin), boot (developer-only process control with a private DM panel). Everything persists in SQLite (WAL, FK cascades, CHECK-validated writes, append-only migrations); reminders survive restarts and deliver exactly once; logs mirror to a private Discord channel with secret-censoring; the calculator runs in a heap-limited worker thread with a hard kill timer; the invite link requests exactly the permissions the commands use. By **Ranajoy Roy**.
+
 ## v0.6.3-beta — 2026-09-05 (dashboard removed + joke streamlined)
 
 ### Removed

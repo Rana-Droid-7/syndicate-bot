@@ -1,11 +1,9 @@
 import type {
   ChatInputCommandInteraction,
-  ContextMenuCommandBuilder,
   Message,
   SlashCommandBuilder,
   SlashCommandOptionsOnlyBuilder,
   SlashCommandSubcommandsOnlyBuilder,
-  UserContextMenuCommandInteraction,
 } from "discord.js";
 
 export type SlashCommandData =
@@ -65,18 +63,5 @@ export interface Command {
   prefixNames?: string[];
 }
 
-/**
- * A right-click user command (Apps menu on a user). Same loader and
- * same collection as slash commands — dispatched from
- * interactionCreate when a UserContextMenuCommandInteraction arrives.
- */
-export interface UserContextCommand {
-  data: ContextMenuCommandBuilder;
-  category: CommandCategory;
-  /** One-line description — the menu text. */
-  description: string;
-  contextMenu: true;
-  execute: (interaction: UserContextMenuCommandInteraction) => Promise<void>;
-}
-
-export type AnyCommand = Command | UserContextCommand;
+/** Every loaded command, whatever its surface. */
+export type AnyCommand = Command;

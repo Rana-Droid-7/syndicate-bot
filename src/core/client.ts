@@ -3,8 +3,9 @@ import type { AnyCommand, Command } from "../types/command.js";
 import type { SuggestionCandidate } from "../lib/suggest.js";
 
 export class SyndicateClient extends Client {
-  // Keyed by command name (slash commands AND right-click context
-  // menu commands share this collection — dispatch distinguishes them)
+  // Every loaded command, keyed by canonical name — slash-only
+  // commands AND prefix-only commands both live here (the two
+  // dispatchers distinguish them by surface).
   public slashCommands = new Collection<string, AnyCommand>();
   // Keyed by every prefix alias (e.g. "h", "commands" for help)
   public prefixCommands = new Collection<string, Command>();

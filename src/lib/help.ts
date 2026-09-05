@@ -2,7 +2,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ContextMenuCommandBuilder,
   StringSelectMenuBuilder,
   type EmbedBuilder,
 } from "discord.js";
@@ -124,11 +123,8 @@ export function buildHelpHomeEmbed(client: SyndicateClient, viewer?: HelpViewer)
 
 /** Surface badge shown next to each command in category listings. */
 function surfaceBadge(command: AnyCommand): string {
-  if ("contextMenu" in command) return "right-click";
   const cmd = command as Command;
-  if (cmd.surface === "prefix-only") return `\`${config.prefix}\` prefix`;
-  if (cmd.surface === "slash-only") return "slash-only";
-  return `\`${config.prefix}\` + slash`;
+  return cmd.surface === "prefix-only" ? `\`${config.prefix}\` prefix` : "slash-only";
 }
 
 /**
@@ -161,7 +157,7 @@ export function buildCategoryEmbed(client: SyndicateClient, category: CommandCat
     const cmd = command as Command;
     const name = commandName(command);
     const isSlash = cmd.surface === "slash-only";
-    const fieldTitle = "contextMenu" in command ? `${name} (right-click)` : isSlash ? `/${name}` : `${config.prefix}${name}`;
+    const fieldTitle = isSlash ? `/${name}` : `${config.prefix}${name}`;
     // Prefix commands store usage prefix-free; render with the env prefix.
     const usage = isSlash ? cmd.usage : `${config.prefix}${cmd.usage}`;
     embed.addFields({
@@ -205,21 +201,6 @@ export function buildCommandDetailEmbed(
   const meta = CATEGORY_META[command.category];
   const name = commandName(command);
   const cmd = command as Command;
-
-  // ---- context-menu commands get their own layout ----
-  if ("contextMenu" in command) {
-    const ctx = command as unknown as { data: ContextMenuCommandBuilder; description: string };
-    return baseEmbed()
-      .setColor(meta.color)
-      .setTitle(`${meta.emoji} ${ctx.data.name} (right-click command)`)
-      .setDescription(ctx.description)
-      .addFields({
-        name: "How to use",
-        value: `Right-click any user → **Apps** → **${ctx.data.name}**.`,
-        inline: false,
-      })
-      .setFooter({ text: `${config.botName} • v${config.version}` });
-  }
 
   const typedName = cmd.surface === "slash-only" ? `/${name}` : `${config.prefix}${name}`;
 

@@ -1,12 +1,14 @@
-# Syndicate Bot — v0.6.3-beta
+# Syndicate Bot — v1.0.0
 
 A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
 moderation, admin, and developer tiers — built with discord.js +
 TypeScript on a real SQL database.
 
-v0.6.3 removes the experimental local dashboard (a better one is
-planned) and streamlines the joke command — plain `joke` tells one,
-no `say` needed.
+**v1.0.0 — the first stable release.** Six betas and five strict
+audit cycles later: a settled two-lane architecture, a complete test
+pyramid wired into CI, and zero known defects. The command reference
+below is the whole story — everything public on the prefix,
+moderation/admin/developer tools on native slash.
 
 It builds on v0.5.4's two-lane rule: **public commands live
 exclusively on the prefix defined in your `.env`** (default `>`;
@@ -77,7 +79,7 @@ prefix input gets a **starts-with lookup** (`>se` → serverinfo,
 setnick, userinfo...) or a **typo suggestion** (`>halp` → "did you
 mean **>help**?").
 
-## Commands (v0.6.3-beta)
+## Commands (v1.0.0)
 
 ### 🛠️ Utility — prefix only, open to everyone
 `help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `poll`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` (aliases: `calc`, `math`; `whois`, `ui`; `av`, `pfp`; `ts`, and more).

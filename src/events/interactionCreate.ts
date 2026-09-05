@@ -1,4 +1,4 @@
-import { MessageFlags, type ChatInputCommandInteraction, type Interaction, type UserContextMenuCommandInteraction } from "discord.js";
+import { MessageFlags, type ChatInputCommandInteraction, type Interaction } from "discord.js";
 import type { BotEvent } from "../handlers/eventHandler.js";
 import type { SyndicateClient } from "../core/client.js";
 import { config } from "../core/config.js";
@@ -14,24 +14,16 @@ const event: BotEvent<"interactionCreate"> = {
   name: "interactionCreate",
   async execute(interaction: Interaction) {
     // Button/select interactions are handled locally by each command's
-    // own collector. This dispatches slash and right-click commands.
-    let commandInteraction: ChatInputCommandInteraction | UserContextMenuCommandInteraction;
-    let isContextMenu: boolean;
-    if (interaction.isUserContextMenuCommand()) {
-      commandInteraction = interaction;
-      isContextMenu = true;
-    } else if (interaction.isChatInputCommand()) {
-      commandInteraction = interaction;
-      isContextMenu = false;
-    } else {
-      return;
-    }
+    // own collector. This dispatches native slash commands (the
+    // moderation/admin/developer lane).
+    if (!interaction.isChatInputCommand()) return;
+    const commandInteraction: ChatInputCommandInteraction = interaction;
 
     const client = commandInteraction.client as SyndicateClient;
     const command = client.slashCommands.get(commandInteraction.commandName);
 
-    // Unknown command, or a kind mismatch — treat as unknown either way.
-    if (!command || isContextMenu !== ("contextMenu" in command)) {
+    // Unknown command — stale registration or renamed/removed command.
+    if (!command) {
       log.warn("EVENT", `Unknown command received: ${commandInteraction.commandName}`);
       await commandInteraction
         .reply({
@@ -48,31 +40,22 @@ const event: BotEvent<"interactionCreate"> = {
 
     log.info(
       "CMD",
-      `${isContextMenu ? "context" : "/"}${commandInteraction.commandName} dispatched — user=${commandInteraction.user.tag} (${commandInteraction.user.id}), ` +
+      `/${commandInteraction.commandName} dispatched — user=${commandInteraction.user.tag} (${commandInteraction.user.id}), ` +
         `guild=${commandInteraction.guildId ?? "DM"}, channel=${commandInteraction.channelId}`,
     );
 
     try {
-      // Context-menu and prefix-only commands never reach cooldowns here;
-      // slash commands get the same per-user cooldown as the prefix.
-      if (!isContextMenu) {
-        cooldowns.check(
-          commandInteraction.guildId,
-          commandInteraction.user.id,
-          commandInteraction.commandName,
-          (command as { cooldownSeconds?: number }).cooldownSeconds ?? 0,
-        );
-      }
+      // Slash commands get the same per-user cooldown as the prefix lane.
+      cooldowns.check(
+        commandInteraction.guildId,
+        commandInteraction.user.id,
+        commandInteraction.commandName,
+        command.cooldownSeconds ?? 0,
+      );
 
-      // The isContextMenu check above guarantees command kind matches
-      // interaction kind, so these casts are safe at runtime.
-      if ("contextMenu" in command) {
-        await command.execute(commandInteraction as UserContextMenuCommandInteraction);
-      } else {
-        const cmd = command as { execute?: (i: ChatInputCommandInteraction) => Promise<void> };
-        if (!cmd.execute) throw new ContextError("This command doesn't run as a slash command.");
-        await cmd.execute(commandInteraction as ChatInputCommandInteraction);
-      }
+      const cmd = command as { execute?: (i: ChatInputCommandInteraction) => Promise<void> };
+      if (!cmd.execute) throw new ContextError("This command doesn't run as a slash command.");
+      await cmd.execute(commandInteraction);
     } catch (error) {
       await handleSlashError(commandInteraction, error, commandInteraction.commandName);
     }
@@ -81,7 +64,7 @@ const event: BotEvent<"interactionCreate"> = {
 
 /** Maps the error taxonomy to styled ephemeral replies + devlogs. */
 async function handleSlashError(
-  interaction: ChatInputCommandInteraction | UserContextMenuCommandInteraction,
+  interaction: ChatInputCommandInteraction,
   error: unknown,
   name: string,
 ): Promise<void> {
