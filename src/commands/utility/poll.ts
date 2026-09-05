@@ -10,7 +10,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { UserInputError } from "../../lib/errors.js";
-import { sanitizeEcho } from "../../lib/validation.js";
+import { sanitizeEchoOrReject } from "../../lib/validation.js";
 
 import { log } from "../../core/logger.js";
 
@@ -128,8 +128,18 @@ const command: Command = {
     // built — poll was the lone gap: the question/option text went
     // raw into the embed title/description AND the button labels,
     // letting @everyone render and invisible characters spoof labels.
-    const safeQuestion = sanitizeEcho(question);
-    const safeOptions = options.map((o) => sanitizeEcho(o));
+    const safeQuestion = sanitizeEchoOrReject(question);
+    if (!safeQuestion) {
+      throw new UserInputError("The question can't be all invisible characters — give it something readable.");
+    }
+    const safeOptions: string[] = [];
+    for (const option of options) {
+      const safe = sanitizeEchoOrReject(option);
+      if (!safe) {
+        throw new UserInputError(`Every option needs some readable text — option ${safeOptions.length + 1} is all invisible characters.`);
+      }
+      safeOptions.push(safe);
+    }
 
     const durationMs = minutes * 60_000;
     const endUnix = Math.floor((Date.now() + durationMs) / 1000);

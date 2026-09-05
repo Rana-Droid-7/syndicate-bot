@@ -1,6 +1,7 @@
 import type { Client } from "discord.js";
 import { reminderRepository, type ReminderRow } from "../repositories/reminders.js";
 import { safeSetTimeout } from "../lib/safeTimeout.js";
+import { UserInputError } from "../lib/errors.js";
 import { log } from "../core/logger.js";
 
 const SWEEP_INTERVAL_MS = 60_000; // periodic due-check, safety net for missed timers
@@ -53,7 +54,14 @@ export const reminderService = {
     // growth without limit. 25 concurrent reminders is plenty for any
     // sane human use.
     if (reminderRepository.pendingCountFor(guildId, userId) >= MAX_PENDING_PER_USER) {
-      throw Object.assign(new Error(`You already have ${MAX_PENDING_PER_USER} pending reminders — let some fire first.`), { name: "UserInputError" });
+      // The REAL taxonomy class — the dispatchers (error mapping,
+      // cooldown refund) and the help system all use instanceof, so
+      // a plain Error with a faked name would degrade to the generic
+      // "Something went wrong" and devlog-spam.
+      throw new UserInputError(
+        `You already have ${MAX_PENDING_PER_USER} pending reminders — let some fire (or deliver) first.`,
+        'remindme "<time>" <what>',
+      );
     }
     const id = reminderRepository.create(guildId, channelId, userId, content, dueUnixMs);
     const row = reminderRepository.get(id);

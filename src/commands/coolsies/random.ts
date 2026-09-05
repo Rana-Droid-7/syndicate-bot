@@ -34,19 +34,14 @@ const command: Command = {
   cooldownSeconds: 3,
 
   prefixExecute: async (message: Message, args: string[]) => {
-    try {
-      if (args.length < 2) throw new UserInputError(`Give me two numbers — \`${config.prefix}random 1 100\`.`, "random <min> <max>");
-      const min = parseIntInRange(args[0], MIN, MAX, "minimum");
-      const max = parseIntInRange(args[1], MIN, MAX, "maximum");
-      validate(min, max);
-      await message.reply({ embeds: [buildEmbed(min, max)] });
-    } catch (error) {
-      if (error instanceof UserInputError) {
-        await message.reply({ embeds: [errorEmbed(error.message)] });
-        return;
-      }
-      throw error;
-    }
+    // Taxonomy errors propagate to the dispatcher's single rendering
+    // path — identical embeds everywhere + cooldown refund on input
+    // mistakes.
+    if (args.length < 2) throw new UserInputError(`Give me two numbers — \`${config.prefix}random 1 100\`.`, "random <min> <max>");
+    const min = parseIntInRange(args[0], MIN, MAX, "minimum");
+    const max = parseIntInRange(args[1], MIN, MAX, "maximum");
+    validate(min, max);
+    await message.reply({ embeds: [buildEmbed(min, max)] });
   },
 };
 

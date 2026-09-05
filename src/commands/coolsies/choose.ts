@@ -29,16 +29,11 @@ const command: Command = {
   prefixExecute: async (message: Message, args: string[]) => {
     // args arrive QUOTE-PARSED from the dispatcher:
     //   >choose "green curry" pizza  ->  ["green curry", "pizza"]
-    try {
-      const options = validateOptions(args);
-      await message.reply({ embeds: [buildEmbed(options)] });
-    } catch (error) {
-      if (error instanceof UserInputError) {
-        await message.reply({ embeds: [errorEmbed(error.message)] });
-        return;
-      }
-      throw error;
-    }
+    // Taxonomy errors propagate to the dispatcher's single rendering
+    // path — identical embeds to every other command + cooldown
+    // refund on input mistakes.
+    const options = validateOptions(args);
+    await message.reply({ embeds: [buildEmbed(options)] });
   },
 };
 

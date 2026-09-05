@@ -57,6 +57,10 @@ export function buildCollectionHandlers<R extends CollectionRow>(cfg: Collection
 
   function requireDeveloper(userId: string): void {
     if (!isDeveloper(userId)) {
+      // Audit trail for gate attempts — the RENDERING happens in the
+      // shared dispatcher error path now, but the log belongs here
+      // where the context is.
+      log.warn("PERM", `${cfg.commandName} management DENIED — ${userId} is not a developer.`);
       throw new PermissionError(`${cfg.title} management is developer-only.`);
     }
   }
@@ -188,23 +192,5 @@ export function buildCollectionHandlers<R extends CollectionRow>(cfg: Collection
     }
   }
 
-  /** Shared catch handler for the taxonomy errors these handlers throw. */
-  async function handleManagementError(message: Message, error: unknown, sub: string): Promise<boolean> {
-    if (error instanceof PermissionError) {
-      log.warn("PERM", `${cfg.commandName} ${sub} DENIED — ${message.author.id} is not a developer.`);
-      await message.reply({ embeds: [errorEmbed(error.message)] });
-      return true;
-    }
-    if (error instanceof UserInputError) {
-      const embed = errorEmbed(error.message);
-      if (error.usage) {
-        embed.addFields({ name: "Correct usage", value: `\`${error.usage}\``, inline: false });
-      }
-      await message.reply({ embeds: [embed] });
-      return true;
-    }
-    return false; // rethrow-worthy
-  }
-
-  return { requireDeveloper, add, list, remove, edit, toggle, dispatchManagement, handleManagementError };
+  return { requireDeveloper, add, list, remove, edit, toggle, dispatchManagement };
 }

@@ -1,6 +1,7 @@
 import { jokeRepository, type JokeRow } from "../repositories/jokes.js";
 import { log } from "../core/logger.js";
-import { sanitizeEcho, truncate } from "../lib/validation.js";
+import { sanitizeEcho, sanitizeEchoOrReject, truncate } from "../lib/validation.js";
+import { UserInputError } from "../lib/errors.js";
 
 // Matches the DB CHECK constraint on jokes.content. Truncation happens
 // AFTER sanitization here because sanitizeEcho EXPANDS text (each
@@ -8,6 +9,17 @@ import { sanitizeEcho, truncate } from "../lib/validation.js";
 // raw input alone can't stop the stored result from exceeding the
 // constraint and crashing the insert.
 const MAX_JOKE_LENGTH = 500;
+
+/**
+ * Shared sanitize-then-truncate shaping for add/edit. Returns null
+ * when the input sanitizes to nothing (invisible characters only) —
+ * the caller turns that into a UserInputError before any SQL runs,
+ * instead of the insert crashing on the DB CHECK (BETWEEN 1 AND 500).
+ */
+function shape(content: string): string | null {
+  const safe = sanitizeEchoOrReject(content);
+  return safe !== null ? truncate(safe, MAX_JOKE_LENGTH) : null;
+}
 
 /**
  * Joke service. Public reads are random SQL-side; every mutation is
@@ -24,9 +36,10 @@ export const jokeService = {
   },
 
   add(content: string, developerId: string): number {
-    // Sanitize first (text expands), then truncate to the stored cap —
-    // see MAX_JOKE_LENGTH note above.
-    const safe = truncate(sanitizeEcho(content.trim()), MAX_JOKE_LENGTH);
+    const safe = shape(content);
+    if (safe === null) {
+      throw new UserInputError("That joke is nothing but invisible characters — give it actual text.");
+    }
     const id = jokeRepository.add(safe, developerId);
     log.info("COOLSIES", `Joke #${id} added by developer ${developerId}.`);
     return id;
@@ -47,8 +60,10 @@ export const jokeService = {
   },
 
   edit(id: number, content: string): boolean {
-    // Same sanitize-then-truncate ordering as add().
-    const safe = truncate(sanitizeEcho(content.trim()), MAX_JOKE_LENGTH);
+    const safe = shape(content);
+    if (safe === null) {
+      throw new UserInputError("That joke is nothing but invisible characters — give it actual text.");
+    }
     const ok = jokeRepository.edit(id, safe);
     log.info("COOLSIES", ok ? `Joke #${id} edited.` : `Joke #${id} edit failed — not found.`);
     return ok;
@@ -62,6 +77,8 @@ export const jokeService = {
 
   /** Display-safe joke text for embeds. */
   display(joke: JokeRow): string {
-    return truncate(sanitizeEcho(joke.content), 400);
+    // Rows can only be stored through the shape() gate, so this can't
+    // be empty — sanitize again anyway for defense in depth.
+    return truncate(sanitizeEcho(joke.content) || "[empty]", 400);
   },
 };

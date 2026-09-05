@@ -95,19 +95,16 @@ const command: Command = {
       return;
     }
 
+    // Management subcommands are developer-only (gated inside the
+    // shared handlers, checked against trusted IDs — never roles).
+    // Taxonomy errors PROPAGATE to the dispatcher's single rendering
+    // path — identical embeds everywhere + cooldown refund on input
+    // mistakes.
     const restArgs = args.slice(1);
-    try {
-      // Management subcommands are developer-only (gated inside the
-      // shared handlers, checked against trusted IDs — never roles).
-      const handled = await handlers.dispatchManagement(message, first, restArgs);
-      if (!handled) {
-        // Unreachable (MANAGEMENT_SUBS pre-filtered), kept for safety.
-        throw new UserInputError(`I don't know an 8-ball subcommand called \`${first}\`.`, USAGE);
-      }
-    } catch (error) {
-      const rendered = await handlers.handleManagementError(message, error, first);
-      if (rendered) return;
-      throw error;
+    const handled = await handlers.dispatchManagement(message, first, restArgs);
+    if (!handled) {
+      // Unreachable (MANAGEMENT_SUBS pre-filtered), kept for safety.
+      throw new UserInputError(`I don't know an 8-ball subcommand called \`${first}\`.`, USAGE);
     }
   },
 };

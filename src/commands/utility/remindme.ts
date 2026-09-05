@@ -75,6 +75,14 @@ const command: Command = {
     const { date, delayMs } = parseAndValidate(timeInput);
     // Escape first, truncate after — see MAX_TEXT_LENGTH note above.
     const safeText = truncate(safeBoldText(text), MAX_TEXT_LENGTH);
+    // Escaping strips nothing but the input could still be entirely
+    // invisible characters — an empty stored text violates the DB
+    // CHECK (BETWEEN 1 AND 300) and crashes the insert. The
+    // dispatcher's UserInputError path (usage + no cooldown burn)
+    // handles the rejection cleanly.
+    if (!safeText.trim()) {
+      throw new UserInputError("Tell me what to remind you about — that text is all invisible characters.");
+    }
     const dueUnixMs = date.getTime();
 
     await reminderService.create(

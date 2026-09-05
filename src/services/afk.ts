@@ -1,6 +1,6 @@
 import { afkRepository, type AfkRow } from "../repositories/afk.js";
 import { log } from "../core/logger.js";
-import { safeBoldText, truncate } from "../lib/validation.js";
+import { safeBoldText, sanitizeEcho, truncate } from "../lib/validation.js";
 
 export interface AfkStatus {
   reason: string;
@@ -66,7 +66,11 @@ export const afkService = {
   set(guildId: string, userId: string, rawReason: string): AfkStatus {
     // Escape first (text expands), THEN truncate to the stored cap so
     // the DB CHECK constraint can never be violated by expansion.
-    const reason = truncate(safeBoldText(rawReason.trim() || "AFK"), MAX_REASON_STORED);
+    // Invisible-only reasons sanitize to "" — an empty stored reason
+    // would violate the CHECK (length <= 200 is fine, but the notice
+    // would render "** **"), so fall back to the plain "AFK" marker.
+    const shaped = truncate(safeBoldText(rawReason.trim() || "AFK"), MAX_REASON_STORED);
+    const reason = sanitizeEcho(shaped).trim() ? shaped : "AFK";
     const sinceUnixMs = Date.now();
     afkRepository.set(guildId, userId, reason, sinceUnixMs);
     indexGet(guildId).add(userId);

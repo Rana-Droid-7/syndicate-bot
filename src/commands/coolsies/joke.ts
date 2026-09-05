@@ -62,28 +62,24 @@ const command: Command = {
   prefixExecute: async (message: Message, args: string[]) => {
     // Bare "joke" = hear one. Management verbs follow the shared
     // collection dispatcher; anything else is a clean error with
-    // the usage line.
+    // the usage line. All taxonomy errors PROPAGATE to the
+    // dispatcher's single rendering path (identical embeds to the
+    // other commands + cooldown refund on input mistakes).
     const sub = (args[0] ?? "").toLowerCase();
     const restArgs = args.slice(1);
 
-    try {
-      if (!sub) {
-        await tellOne(message);
-        return;
-      }
-
-      const handled = await handlers.dispatchManagement(message, sub, restArgs);
-      if (handled) return;
-
-      throw new UserInputError(
-        `I don't know a joke subcommand called \`${sub}\` — plain \`${config.prefix}joke\` tells one.`,
-        USAGE,
-      );
-    } catch (error) {
-      const rendered = await handlers.handleManagementError(message, error, sub);
-      if (rendered) return;
-      throw error;
+    if (!sub) {
+      await tellOne(message);
+      return;
     }
+
+    const handled = await handlers.dispatchManagement(message, sub, restArgs);
+    if (handled) return;
+
+    throw new UserInputError(
+      `I don't know a joke subcommand called \`${sub}\` — plain \`${config.prefix}joke\` tells one.`,
+      USAGE,
+    );
   },
 };
 

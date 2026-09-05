@@ -260,7 +260,7 @@ console.log("\n=== JOKE ===");
 
   // pleb tries add
   r = await runCommand(J, '>joke add "haha"', { authorId: PLEB });
-  report("joke: non-dev add denied", !r.ok || r.replies.some((x) => String(x).includes("developer")), "no deny shown");
+  report("joke: non-dev add denied (PermissionError)", !r.ok && r.error?.name === "PermissionError", `got ok=${r.ok} err=${r.error?.name}`);
   const jokeCountBefore = jokeRepository.countAll();
   report("joke: nothing stored by pleb", jokeRepository.countAll() === jokeCountBefore);
 
@@ -294,7 +294,7 @@ console.log("\n=== JOKE ===");
 
   // pleb edit denied
   r = await runCommand(J, `>joke edit ${target.id} "hax"`, { authorId: PLEB });
-  report("joke: non-dev edit denied", !r.ok || String(r.replies[0]).includes("developer"));
+  report("joke: non-dev edit denied (PermissionError)", !r.ok && r.error?.name === "PermissionError", `got ok=${r.ok} err=${r.error?.name}`);
 
   // enable/disable/remove round trip
   r = await runCommand(J, `>joke disable ${target.id}`, { authorId: DEV });
@@ -333,7 +333,10 @@ console.log("\n=== COOLSIES ===");
     [">choose one", false, "single option"],
     [">choose", false, "no options"],
     [`>choose ${Array.from({ length: 12 }, (_, i) => "o" + i).join(" ")}`, false, "12 options rejected (cap 10)"],
-    [`>choose ${"x".repeat(200)}`, true, "200-char option"],
+    // 200-char option exceeds the 100-char cap -> UserInputError
+    // (previously the command swallowed it internally with a reply;
+    // with propagation this correctly throws to the dispatcher).
+    [`>choose ${"x".repeat(200)}`, false, "200-char option rejected (cap 100)"],
   ];
   for (const [input, ok, label] of cases) {
     const res = await runCommand(C, input);
@@ -384,7 +387,7 @@ console.log("\n=== COOLSIES ===");
   report("8ball: 'enable ...' prose question is answered", r8g.ok && r8g.replies.length > 0, "gated as management?");
   // but the real management shape still gates non-devs:
   const r8h = await runCommand(R8, ">8ball remove 12", { authorId: "222222222222222222" });
-  report("8ball: real 'remove <id>' still developer-gated", !r8h.ok || r8h.replies.some((x) => String(x).includes("developer")));
+  report("8ball: real 'remove <id>' still developer-gated (PermissionError)", !r8h.ok && r8h.error?.name === "PermissionError", `got ok=${r8h.ok} err=${r8h.error?.name}`);
 
   // 8-ball management suite (mirrors the joke suite)
   {
@@ -396,7 +399,7 @@ console.log("\n=== COOLSIES ===");
 
     // pleb denied management
     let rr = await runCommand(R8, '>8ball add "nope"', { authorId: PLEB8 });
-    report("8ball: non-dev add denied", !rr.ok || rr.replies.some((x) => String(x).includes("developer")));
+    report("8ball: non-dev add denied (PermissionError)", !rr.ok && rr.error?.name === "PermissionError", `got ok=${rr.ok} err=${rr.error?.name}`);
 
     // dev add
     rr = await runCommand(R8, '>8ball add "Signs point to absolutely."', { authorId: DEV8 });
@@ -761,12 +764,32 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
   // --- H2: poll must sanitize question/options ---
   {
     const P = "./dist/commands/utility/poll.js";
-    const pr = await runCommand(P, '>poll "@everyone vote!" "@everyone" "opt" 5');
-    // The mock stringifies the reply payload — inspect the raw JSON string
-    const raw = JSON.stringify(pr.replies[0] ?? "");
-    report("poll: @everyone broken in question/options (embed + labels)",
-      pr.ok && !raw.includes('"@everyone vote!"') && !raw.match(/"label":"@everyone"/),
-      "raw @everyone survived into poll render");
+    const cmd = (await import(P)).default;
+    const captured = [];
+    const msg = makeMessage('>poll "@everyone vote!" "@everyone" "opt" 5');
+    msg.reply = async (p) => {
+      captured.push(p); // keep the RAW payload — embeds AND components
+      return {
+        id: "777777777777777777", edit: async () => null, createdTimestamp: Date.now(),
+        createMessageComponentCollector: () => ({ on: () => {}, stop: () => {} }),
+      };
+    };
+    await cmd.prefixExecute(msg, ["@everyone vote!", "@everyone", "opt", "5"]);
+    const payload = captured[0];
+    const title = payload.embeds[0].toJSON().title ?? "";
+    const labels = payload.components
+      .flatMap((row) => row.toJSON().components)
+      .map((c) => c.label ?? "");
+    report("poll: @everyone broken in question (embed title)",
+      !title.includes("@everyone") && title.includes("\u200b"),
+      `title=${JSON.stringify(title)}`);
+    report("poll: @everyone broken in option labels (buttons)",
+      !labels.some((l) => l.includes("@everyone")),
+      `labels=${JSON.stringify(labels)}`);
+    // and the invisible-only question is now rejected cleanly
+    const bad = await runCommand(P, `>poll "${"\u200B".repeat(3)}" "a" "b"`);
+    report("poll: invisible-only question rejected, not empty-title crash",
+      !bad.ok || bad.replies.length > 0, "neither threw nor replied");
   }
 
   // --- H1: mirror sanitizer neutralizes code fences (unit-level) ---
@@ -775,7 +798,72 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
     const line = sanitizeMirrorLine('args=["``` @everyone"] ');
     report("logSink: triple-backtick neutralized in mirrored lines", !line.includes("```"));
   }
+
+  // --- Cycle-2: the reminder cap must throw the REAL UserInputError ---
+  {
+    const R = "./dist/commands/utility/remindme.js";
+    const { reminderService } = await import("./dist/services/reminders.js");
+    const capUid2 = "151515151515151515";
+    // fill to the cap (25)
+    for (let i = 0; i < 25; i++) {
+      await runCommand(R, `>remindme "in 2 minutes" fill ${i}`, { authorId: capUid2 });
+    }
+    const over = await runCommand(R, '>remindme "in 2 minutes" one too many', { authorId: capUid2 });
+    report("remindme: cap error is a REAL UserInputError (instanceof, not faked name)",
+      !over.ok && over.error?.name === "UserInputError" && over.error?.constructor?.name === "UserInputError",
+      `got ${over.error?.constructor?.name}`);
+    const { reminderRepository } = await import("./dist/repositories/reminders.js");
+    for (const row of reminderRepository.pending()) reminderRepository.markDelivered(row.id);
+  }
+
+  // --- Cycle-2: invisible-only content is rejected, never a CHECK crash ---
+  {
+    const J = "./dist/commands/coolsies/joke.js";
+    const { jokeRepository } = await import("./dist/repositories/jokes.js");
+    const DEV = "111111111111111111";
+    const before = jokeRepository.countAll();
+    const inv = await runCommand(J, `>joke add "${"\u200B".repeat(5)}"`, { authorId: DEV });
+    report("joke: invisible-only add rejected as UserInputError (no CHECK crash)",
+      !inv.ok && inv.error?.name === "UserInputError" && jokeRepository.countAll() === before,
+      `count=${jokeRepository.countAll()}/${before}`);
+
+    const R8 = "./dist/commands/coolsies/8ball.js";
+    const { eightBallRepository } = await import("./dist/repositories/eightball.js");
+    const before8 = eightBallRepository.countAll();
+    const inv8 = await runCommand(R8, `>8ball add "${"\u200B".repeat(5)}"`, { authorId: DEV });
+    report("8ball: invisible-only add rejected as UserInputError (no CHECK crash)",
+      !inv8.ok && inv8.error?.name === "UserInputError" && eightBallRepository.countAll() === before8);
+
+    const R = "./dist/commands/utility/remindme.js";
+    const rem = await runCommand(R, `>remindme "in 2 minutes" ${"\u200B".repeat(5)}`, { authorId: DEV });
+    report("remindme: invisible-only text rejected as UserInputError (no CHECK crash)",
+      !rem.ok && rem.error?.name === "UserInputError");
+
+    const A = "./dist/commands/utility/afk.js";
+    const { afkRepository } = await import("./dist/repositories/afk.js");
+    const invAfk = await runCommand(A, `>afk ${"\u200B".repeat(5)}`, { authorId: DEV });
+    const afkRow = afkRepository.get("999999999999999999", DEV);
+    report("afk: invisible-only reason falls back to 'AFK' (no empty stored reason)",
+      invAfk.ok && afkRow?.reason === "AFK", `reason=${JSON.stringify(afkRow?.reason)}`);
+    afkRepository.clear("999999999999999999", DEV);
+  }
+
+  // --- Cycle-2: unfirom joke/8ball error taxonomy via the dispatcher ---
+  {
+    // With internal catch-and-rerender removed, >choose with one option
+    // must THROW a UserInputError (the dispatcher renders it) — not
+    // reply-and-swallow (which burned the cooldown).
+    const C = "./dist/commands/coolsies/choose.js";
+    const one = await runCommand(C, ">choose pizza");
+    report("choose: input errors propagate (throw, not internal reply)",
+      !one.ok && one.error?.name === "UserInputError", `got ok=${one.ok}`);
+    const RN = "./dist/commands/coolsies/random.js";
+    const bad = await runCommand(RN, ">random 5");
+    report("random: input errors propagate (throw, not internal reply)",
+      !bad.ok && bad.error?.name === "UserInputError");
+  }
 }
+
 
 
 console.log(`\n${failed === 0 ? `ALL ${passed} CHECKS PASSED` : `${failed} FAILED / ${passed} passed`}`);

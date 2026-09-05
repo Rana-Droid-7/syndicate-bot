@@ -10,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseQuotedArgs, isSnowflake, parseIntInRange, truncate, escapeMarkdownBold, sanitizeEcho, escapeCodeBlock, safeBoldText } from "../lib/validation.js";
+import { parseQuotedArgs, isSnowflake, parseIntInRange, truncate, escapeMarkdownBold, sanitizeEcho, sanitizeEchoOrReject, escapeCodeBlock, safeBoldText } from "../lib/validation.js";
 import { Cooldowns } from "../lib/cooldowns.js";
 import { rollDie } from "../commands/coolsies/dice.js";
 import { editDistance, findStartsWithMatches, findClosestMatch, type SuggestionCandidate } from "../lib/suggest.js";
@@ -364,6 +364,21 @@ test("regression: cooldown refund clears the live hit", () => {
 test("regression: sanitizeEcho strips U+2028/U+2029 line separators", () => {
   assert.ok(!sanitizeEcho("a\u2028b\u2029c").includes("\u2028"));
   assert.ok(!sanitizeEcho("a\u2028b\u2029c").includes("\u2029"));
+});
+
+// Cycle-2: sanitizeEchoOrReject gates empty-after-sanitize text — the
+// invisible-only inputs that crashed DB CHECKs (joke/8ball/remindme)
+// and would crash djs validation (empty poll titles/labels).
+test("sanitizeEchoOrReject: rejects invisible-only input, keeps real text", () => {
+  assert.equal(sanitizeEchoOrReject("\u200B\u200B\u200B"), null);
+  assert.equal(sanitizeEchoOrReject("\u200B\uFEFF\u2060\u200C"), null);
+  assert.equal(sanitizeEchoOrReject("   "), null, "whitespace-only trims to nothing");
+  assert.equal(sanitizeEchoOrReject("hello"), "hello");
+  // mention-breaking still applies through the gate
+  assert.ok(sanitizeEchoOrReject("@everyone run")?.startsWith("@\u200beveryone"));
+  // interior spaces around real text survive (only OUTER whitespace is trimmed)
+  const spaced = sanitizeEchoOrReject("a b");
+  assert.equal(spaced, "a b");
 });
 
 

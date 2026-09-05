@@ -111,11 +111,29 @@ export function escapeMarkdownBold(text: string): string {
  * Order matters: invisible characters are stripped FIRST, then the
  * mention is broken with a zero-width space — doing it the other
  * way around would strip the very character that breaks the ping.
+ *
+ * Inputs that are ENTIRELY invisible/control characters sanitize to
+ * "" — callers that must not store/emit empty (DB CHECKs between 1
+ * and N, embed titles, button labels) use sanitizeEchoOrReject and
+ * treat that as invalid input instead of crashing later.
  */
 export function sanitizeEcho(text: string): string {
   return text
     .replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200D\u2060\uFEFF\u2028\u2029]/g, "")
     .replace(/@(everyone|here)/gi, "@\u200b$1");
+}
+
+/**
+ * sanitizeEcho + emptiness gate. Returns null when the sanitized
+ * result is empty (the input was nothing but invisible characters,
+ * zero-width junk, or whitespace) — the caller decides the user-
+ * facing error. Prevents two crash families at once: DB CHECK
+ * violations (length BETWEEN 1 AND N) on insert, and discord.js
+ * validation throws (empty embed title / button label).
+ */
+export function sanitizeEchoOrReject(text: string): string | null {
+  const safe = sanitizeEcho(text.trim());
+  return safe.length > 0 ? safe : null;
 }
 
 /** Safe code-block content: backticks can't close the block early. */
