@@ -2,6 +2,46 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
 
+## v1.0.1 — 2026-09-05 (post-1.0 hardening: three adversarial audit cycles)
+
+**The release the audits earned.** Three consecutive adversarial cycles against the 1.0.0 codebase (each re-auditing the previous cycle's fixes, empirically confirming every suspicion with repro scripts before touching code) surfaced 3 critical bugs, 10 high/medium issues, and a long tail of nits — every one fixed and pinned by a regression check that runs in CI from now on.
+
+### Critical (all confirmed with repro scripts before fixing)
+- **`/warn list` overflow was inverted**: with more warnings than fit an embed, the bot showed the OLDEST records and hid exactly the recent ones moderators base decisions on — while the footer claimed "most recent shown". Overflow now drops from the oldest end; the single-entry fallback shows the newest.
+- **`>changelog` was a guaranteed API error**: the full release list rendered a ~7,700-char embed against Discord's hard 6,000-char total cap — every invocation failed with *Invalid Form Body*. The builder now auto-fits (newest releases whole, older ones collapsed into a pointer line) with the budget enforced in code, not by hoping the array stays short.
+- **The orphaned-user prune crashed guild-leave cleanup**: `pruneOrphanedUsers` checked every child table except `eightball` — a user whose only reference was an 8-ball response made the whole `DELETE` fail with a foreign-key constraint, skipping the sweep AND the in-memory AFK index drop that followed it. Both the missing clause and the ordering are fixed.
+
+### Security / injection surfaces
+- **Log-mirror fence injection**: the private bot-logs channel wraps batches in a code fence, but user args (e.g. `>suggest "``` @everyone"`) could break out of it — `sanitizeMirrorLine` now neutralizes triple backticks the same way `errorDetail` always has.
+- **`>poll` never sanitized its text** — the one user-text command outside the pipeline: `@everyone` rendered in the embed title and button labels, invisible characters passed into labels. Question and options now pass `sanitizeEcho` before anything renders.
+- **Invisible-only input crash family**: text that sanitizes to empty (zero-width chars, BOMs) violated DB `CHECK (length BETWEEN 1 AND N)` constraints as raw `SqliteError`s in `joke/8ball add`, `>remindme` text, and would have thrown on an empty poll title. New `sanitizeEchoOrReject()` gate: clean `UserInputError`s, or the AFK "AFK" fallback.
+- **Strict number parsing**: `Number()` accepts `"0x10"` (16), `"1e3"` (1000), `"1_0"` (10) as integers — so `>joke remove 0x10` deleted joke #16. `parseIntInRange` now requires plain decimal digits.
+- **Line-separator stripping**: `sanitizeEcho` now also removes U+2028/U+2029 (embed line-break injection).
+
+### Durability
+- **Reminder rate-limits are no longer permanent failures**: a Discord 429 (e.g. a boot-time burst of overdue reminders) used to mark the row `failed` forever. Rate-limited deliveries now stay `pending` for the 60s sweep to retry; only hard errors go terminal.
+- **Reminders are capped at 25 pending per user per guild** (a 5s cooldown still allowed ~17k/day of boot-timer rows). The cap error is the real `UserInputError` — the first implementation faked the class with a reassigned `.name`, which failed every `instanceof` check downstream (generic error text, devlog spam, no cooldown refund). Found and fixed in the same cycle's self-review.
+
+### Consistency / UX
+- **Input errors no longer burn cooldowns, anywhere**: `joke`, `8ball`, `choose`, `random` (cycle 2) and `roll`, `rps`, `snowflake`, `userinfo`, `avatar`, `banner` (cycle 3) all replied input errors as success-shaped embeds inside the command — two parallel rendering paths that could drift, and every one consumed the cooldown on the mistake. All now throw taxonomy errors to the single dispatcher path, which renders them identically and refunds the cooldown (new `cooldowns.refund()`). Confirmed: `>roll 0d6` then `>roll banana` within 3s previously produced "you're using this command too quickly" instead of the notation help.
+- **`CONFIRM` is mirrored**: the tag was missing from `MIRRORED_TAGS`, so every kick/ban/timeout/purge/warn-clear confirmation was invisible in the private bot-logs channel.
+- **One dead-weight sweep**: `express`, `socket.io`, and the native `@napi-rs/canvas` (dashboard leftovers from 0.6.0–0.6.2) removed from dependencies; unused `errorEmbed` imports, `delayMs`, a `roll` parameter, and timestamp's dead `STYLE_CHOICES` table deleted (`noUnusedLocals` is now part of the local audit loop).
+
+### Failsafes
+- `getDb()` refuses access after `closeDb()` instead of silently re-opening the database file.
+- `confirmAction` degrades on a missing message resource instead of hitting non-null assertions inside every moderation command.
+- `guildDelete` drops the in-memory AFK index before the try block — a DB failure can't skip it.
+
+### New verification infrastructure (wired into `npm run verify` + GitHub + GitLab CI)
+- **`verify-embeds.mjs` (68 checks)** — renders every embed the bot can produce through discord.js' own serializer and validates each against Discord's hard limits (6,000 total / 4,096 description / 1,024 field value / 256 title / 25 fields), with maximal hostile inputs and the help visibility gates.
+- `verify-dispatcher.mjs` now uses a self-cleaning throwaway database (the old `final.db` was recreated and abandoned on every run).
+- **Counts**: 40 unit + 141 integration/attack + 68 embed + 24 lookup + 3 timer checks + dispatcher torture — plus relation scans (alias collisions, usage-vs-alias consistency, example dispatch, suggestion coverage, slash deployment parity, tag-mirroring coverage) run during the audit.
+- Three harness checks that passed vacuously (a reply-or-throw disjunction, a masked-embed poll check, a replica-logic choose test) were rebuilt to assert the exact contracts.
+
+### Housekeeping
+- README: privileged-intent setup step (first boot failed with `Used disallowed intents` for anyone following it), accurate verify counts, changelog/embed harness in the development section.
+- Stale references cleaned: bug template's `0.5.1-beta` placeholder and "right-click context menu" option (that surface was removed in 0.5.4).
+
 ## v1.0.0 — 2026-09-05 🎉
 
 **The first stable release.** Six beta versions, five strict audit cycles, one removed-and-relearning dashboard later — the architecture is settled, every surface is verified, and the version number drops its suffix for good.

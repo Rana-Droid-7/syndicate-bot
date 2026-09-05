@@ -1,13 +1,14 @@
-# Syndicate Bot — v1.0.0
+# Syndicate Bot — v1.0.1
 
 A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
 moderation, admin, and developer tiers — built with discord.js +
 TypeScript on a real SQL database.
 
-**v1.0.0 — the first stable release.** Six betas and five strict
-audit cycles later: a settled two-lane architecture, a complete test
-pyramid wired into CI, and zero known defects. The command reference
-below is the whole story — everything public on the prefix,
+**v1.0.1 — the release the audits earned.** Six betas, five internal
+audit cycles, then **three more adversarial post-1.0 cycles** (each
+re-auditing the previous cycle's fixes) — every confirmed finding
+fixed and pinned by a regression check that runs in CI. The command
+reference below is the whole story — everything public on the prefix,
 moderation/admin/developer tools on native slash.
 
 It builds on v0.5.4's two-lane rule: **public commands live
@@ -87,7 +88,7 @@ prefix input gets a **starts-with lookup** (`>se` → serverinfo,
 setnick, userinfo...) or a **typo suggestion** (`>halp` → "did you
 mean **>help**?").
 
-## Commands (v1.0.0)
+## Commands (v1.0.1)
 
 ### 🛠️ Utility — prefix only, open to everyone
 `help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `poll`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` (aliases: `calc`, `math`; `whois`, `ui`; `av`, `pfp`; `ts`, and more).
@@ -145,18 +146,32 @@ else touches SQL.
 - **Moderation** = shared `canModerate` hierarchy (no self/bot/owner/equal-or-higher targeting; bot role positioned high enough), re-verified *after* confirmation dialogs, not just before.
 - **Every confirmation dialog** collects only the invoker's click, at most once (max:1 + settled guard).
 - **`/calculate`** runs in an isolated worker thread with a 3-second kill timer + blocklist — the DoS vector was real and is dead.
-- **All user text** passes sanitization (mass-mention breaking, invisible-character stripping, markdown-safe escaping) before any embed is built.
+- **All user text** passes sanitization (mass-mention breaking, invisible-character stripping, line-separator stripping, markdown-safe escaping) before any embed is built — including poll questions, options, and button labels. Empty-after-sanitize text is rejected, never stored.
+- **Number inputs** are strictly decimal — hex (`0x10`), scientific (`1e3`), and underscore (`1_0`) forms are rejected.
+- **Reminders** cap at 25 pending per user per guild; rate-limited deliveries retry instead of failing permanently.
 
 ## Development
 
-- `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine)
-- `npm run verify` — everything: typecheck, build, unit tests, and all four verification harnesses. Same loop CI runs on every push (GitHub Actions + GitLab CI included).
+- `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine, regression pins)
+- `npm run verify` — everything: strict typecheck, build, **40** unit tests, and **five** verification harnesses (**141** integration/attack + **68** embed-output + **24** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
 - [CHANGELOG.md](CHANGELOG.md) — every release's full history; `changelog` in-chat shows the recent highlights
 - `verify_timer.mjs` — chained-timer regression (the >24.8-day setTimeout bug)
 - `verify_lookup.mjs` — prefix lookup/suggestion scenarios
 - `verify-dispatcher.mjs` — prefix dispatch edge-case torture
 - `verify-integration.mjs` — full command + attack harness against a throwaway database
+- `verify-embeds.mjs` — renders every embed the bot can produce and validates each against Discord's hard limits (6000/4096/1024/256/25)
 - Load-time errors are intentional: a duplicate command name or missing metadata refuses to boot the bot instead of silently dropping it.
+- Error taxonomy: every failure is one typed class, rendered by one shared dispatcher path — input mistakes never consume the cooldown (`cooldowns.refund()`).
+
+## Project files
+
+| File | What it is |
+|---|---|
+| [CHANGELOG.md](CHANGELOG.md) | Every release's full history — also shown in-chat via `changelog` |
+| [SECURITY.md](SECURITY.md) | How to report vulnerabilities, what counts as one here |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | The non-negotiables: verify loop, two-lane rule, error taxonomy, checklist |
+| [LICENSE.md](LICENSE.md) | Private — **not for public use** |
+| [.github/](.github/) + [.gitlab/](.gitlab/) | CI (both platforms), issue templates, PR/MR templates, CODEOWNERS |
 
 ## License
 

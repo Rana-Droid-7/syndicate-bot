@@ -13,8 +13,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Bot version (`>bot` or `/bot`)
-      placeholder: "0.5.1-beta"
+      label: Bot version (`>bot`)
+      placeholder: "1.0.1"
   - type: dropdown
     id: surface
     attributes:
@@ -22,7 +22,6 @@ body:
       options:
         - Prefix command (>)
         - Slash command (/)
-        - Right-click context menu
         - Buttons / menus on a bot message
         - Other / not sure
   - type: textarea

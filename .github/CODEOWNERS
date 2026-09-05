@@ -1,0 +1,24 @@
+# CODEOWNERS — every path has a named owner.
+# Default owner for everything not matched below:
+
+* @Rana-Droid-7
+
+# Security-critical surfaces — never change without maintainer review:
+/src/lib/permissions.ts    @Rana-Droid-7
+/src/core/config.ts        @Rana-Droid-7
+/src/commands/owner/       @Rana-Droid-7
+/src/lib/safeMath.ts       @Rana-Droid-7
+/src/workers/              @Rana-Droid-7
+/src/core/logSink.ts       @Rana-Droid-7
+/src/lib/safeError.ts      @Rana-Droid-7
+
+# Persistence:
+/src/database/             @Rana-Droid-7
+/src/repositories/         @Rana-Droid-7
+/src/services/             @Rana-Droid-7
+
+# CI + verification (the quality gate):
+/.github/workflows/        @Rana-Droid-7
+/.gitlab-ci.yml            @Rana-Droid-7
+/verify-*.mjs              @Rana-Droid-7
+/src/tests/                @Rana-Droid-7

@@ -1,7 +1,7 @@
 {
   "name": "syndicate-bot",
-  "version": "1.0.0",
-  "description": "Syndicate Bot — a polished Discord bot by Ranajoy Roy with utility, coolsies, moderation, admin, and developer tiers. v1.0.",
+  "version": "1.0.1",
+  "description": "Syndicate Bot \u2014 a polished Discord bot by Ranajoy Roy with utility, coolsies, moderation, admin, and developer tiers. v1.0.1",
   "author": "Ranajoy Roy",
   "main": "dist/index.js",
   "type": "module",

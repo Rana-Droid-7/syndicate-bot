@@ -15,10 +15,23 @@ interface ReleaseNotes {
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
   {
+    version: "1.0.1",
+    date: "2026-09-05",
+    highlights: [
+      "**Post-1.0 hardening** — three adversarial audit cycles, every finding empirically confirmed before fixing",
+      "**`/warn list` fixed** — overflow showed the oldest warnings and hid the newest; moderators now see the recent record",
+      "**`>changelog` fixed** — the embed exceeded Discord's 6000-char cap and failed on every invocation; it auto-fits now",
+      "**Injection surfaces closed** — poll sanitizes its text, the log mirror can't be fence-broken, hex/scientific IDs rejected",
+      "**Cooldowns no longer burn on input mistakes** — every command throws taxonomy errors to one shared renderer, with refund",
+      "Reminders: 429s retry instead of failing permanently; 25-pending per-user cap; invisible-text crashes gone",
+      "New embed-output harness: 68 checks against Discord's hard limits, wired into CI",
+    ],
+  },
+  {
     version: "1.0.0",
     date: "2026-09-05",
     highlights: [
-      "**The first stable release** — six betas, five audit cycles, zero known defects",
+      "**The first stable release** — six betas, five audit cycles, zero known defects at release",
       "Two-lane architecture proven: prefix for everything public, slash for moderation/admin/developer",
       "Everything persists (SQLite), reminders survive restarts, calculator runs sandboxed",
       "Full test pyramid: 35 unit + 124 integration + 24 lookup checks + dispatcher torture, in CI",
