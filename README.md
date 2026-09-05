@@ -137,6 +137,7 @@ else touches SQL.
 
 - `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine)
 - `npm run verify` — everything: typecheck, build, unit tests, and all four verification harnesses. Same loop CI runs on every push (GitHub Actions + GitLab CI included).
+- [CHANGELOG.md](CHANGELOG.md) — every release's full history; `changelog` in-chat shows the recent highlights
 - `verify_timer.mjs` — chained-timer regression (the >24.8-day setTimeout bug)
 - `verify_lookup.mjs` — prefix lookup/suggestion scenarios
 - `verify-dispatcher.mjs` — prefix dispatch edge-case torture
