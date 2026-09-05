@@ -6,7 +6,7 @@ import {
   type TextChannel,
 } from "discord.js";
 import type { Command } from "../../types/command.js";
-import { baseEmbed, errorEmbed, successEmbed } from "../../lib/embeds.js";
+import { errorEmbed, successEmbed } from "../../lib/embeds.js";
 import { confirmAction } from "../../lib/confirm.js";
 import { log } from "../../core/logger.js";
 import { safeErrorText } from "../../lib/safeError.js";

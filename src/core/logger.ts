@@ -13,8 +13,8 @@ import { enqueueMirror } from "./logSink.js";
  *     core/logSink.ts for batching/rate-limit details.
  *
  * Tags in use: BOOT, CMD, PREFIX, EVENT, PERM, MOD, ADMIN, OWNER,
- * CONFIRM, TIMER, AFK, WARN, SUGGEST, DEVLOG, SHUTDOWN, CALC,
- * HELP, DEPLOY, BANNER.
+ * CONFIRM, COOLSIES, TIMER, AFK, WARN, SUGGEST, DEVLOG, SHUTDOWN,
+ * CALC, HELP, DEPLOY, BANNER.
  */
 
 function timestamp(): string {

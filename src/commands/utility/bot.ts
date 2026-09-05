@@ -31,7 +31,7 @@ function buildBotInfoEmbed(client: SyndicateClient) {
       { name: "Members (combined)", value: `${userCount}`, inline: true },
       { name: "Developer", value: developerLine, inline: false },
     )
-    .setFooter({ text: `${config.botName} ${config.version} • run /changelog to see what's new` });
+    .setFooter({ text: `${config.botName} ${config.version} • run ${config.prefix}changelog to see what's new` });
 }
 
 function buildBotInfoPayload(client: SyndicateClient) {
@@ -41,6 +41,7 @@ function buildBotInfoPayload(client: SyndicateClient) {
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
+  name: "bot",
   usage: "bot",
   description: "Everything about the bot — version, uptime, stats, invite.",
   details:

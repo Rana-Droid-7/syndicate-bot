@@ -2,7 +2,6 @@ import {
   MessageFlags,
   ComponentType,
   PermissionFlagsBits,
-  type ChatInputCommandInteraction,
   type EmbedBuilder,
   type Message,
   type StringSelectMenuInteraction,
@@ -82,6 +81,7 @@ function visibleCandidates(client: SyndicateClient, viewer: HelpViewer): Suggest
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
+  name: "help",
   usage: "help [command]",
   description: "The command center — browse categories or look up any command.",
   details:

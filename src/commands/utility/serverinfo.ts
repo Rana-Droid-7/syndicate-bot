@@ -76,6 +76,7 @@ async function buildServerInfoEmbed(guild: Guild) {
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
+  name: "serverinfo",
   usage: "serverinfo",
   description: "A snapshot of this server — members, boosts, channels, and more.",
   details:

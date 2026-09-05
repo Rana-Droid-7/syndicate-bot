@@ -1,7 +1,7 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
-import { baseEmbed, successEmbed } from "../../lib/embeds.js";
+import { baseEmbed } from "../../lib/embeds.js";
 import { ContextError, UserInputError } from "../../lib/errors.js";
 import { truncate, sanitizeEcho } from "../../lib/validation.js";
 import { suggestionService } from "../../services/suggestions.js";
@@ -60,6 +60,7 @@ const command: Command = {
       message.guild.name,
       safe,
     );
+    log.info("SUGGEST", `>suggest by ${message.author.tag} (${message.author.id}) in guild ${message.guild.id}: entry #${id}.`);
 
     await message.reply({
       embeds: [

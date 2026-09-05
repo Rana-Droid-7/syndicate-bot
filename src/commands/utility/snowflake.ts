@@ -46,6 +46,7 @@ function buildEmbed(id: string) {
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
+  name: "snowflake",
   usage: "snowflake <id>",
   description: "Decode any Discord ID to its creation date.",
   details:

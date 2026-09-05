@@ -1,7 +1,6 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
-import { UserInputError } from "../../lib/errors.js";
 import { mentionToId, isSnowflake } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 

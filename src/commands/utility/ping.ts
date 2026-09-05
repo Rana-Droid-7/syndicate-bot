@@ -12,6 +12,7 @@ function wsPingText(ping: number): string {
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
+  name: "ping",
   usage: "ping",
   description: "Check the bot's latency.",
   details:

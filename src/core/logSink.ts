@@ -163,6 +163,7 @@ function sanitizeMirrorLine(message: string): string {
 const MIRRORED_TAGS = new Set([
   "BOOT",
   "CMD",
+  "COOLSIES",
   "PREFIX",
   "EVENT",
   "PERM",

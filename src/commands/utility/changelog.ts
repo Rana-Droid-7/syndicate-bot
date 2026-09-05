@@ -33,7 +33,7 @@ const RELEASES: ReleaseNotes[] = [
       "**Help, rebuilt**: every command now has a proper description + a full `>help <command>` guide — what it does, how it behaves, tips",
       "**Category pages redesigned** — every command listed with its description and usage, scannable at a glance",
       "**Smart `>help`**: typos get a \"did you mean...?\" suggestion before anything else",
-      "**8-ball is a full suite now** — `>8ball ask/add/list/remove/edit/enable/disable`, exactly like `/joke`",
+      "**8-ball is a full suite now** — `8ball ask/add/list/remove/edit/enable/disable`, exactly like the joke suite",
       "**Preloaded**: 19 classic 8-ball responses + 10 starter jokes ship in the database — no setup needed",
       "Every detail page shows aliases, examples, and cooldowns",
     ],

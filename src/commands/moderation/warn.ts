@@ -5,7 +5,7 @@ import {
   type ChatInputCommandInteraction,
 } from "discord.js";
 import type { Command } from "../../types/command.js";
-import { baseEmbed, errorEmbed, successEmbed } from "../../lib/embeds.js";
+import { baseEmbed, successEmbed } from "../../lib/embeds.js";
 import { warningService } from "../../services/warnings.js";
 import { canModerate } from "../../lib/permissions.js";
 import { confirmAction } from "../../lib/confirm.js";

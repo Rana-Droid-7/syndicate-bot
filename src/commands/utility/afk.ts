@@ -16,7 +16,7 @@ const command: Command = {
     "Sets a per-server AFK status with an optional reason. Anyone mentioning you " +
     "gets a notice with the reason and how long you've been gone (throttled to " +
     "one notice per channel per minute so it can't be weaponized). Clear it with " +
-    "`>afk off` — or just send any message and the bot welcomes you back. AFK is " +
+    "`afk off` — or just send any message and the bot welcomes you back. AFK is " +
     "tracked per-guild and survives restarts.",
   examples: ["afk getting coffee", "afk off"],
   cooldownSeconds: 3,

@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 import type { Command } from "../../types/command.js";
-import { baseEmbed, errorEmbed, successEmbed } from "../../lib/embeds.js";
+import { errorEmbed, successEmbed } from "../../lib/embeds.js";
 import { isAdmin } from "../../lib/permissions.js";
 import { log } from "../../core/logger.js";
 

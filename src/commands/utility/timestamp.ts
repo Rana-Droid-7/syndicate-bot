@@ -39,6 +39,7 @@ function buildResult(input: string, style: TimestampStyle) {
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
+  name: "timestamp",
   usage: "timestamp <time> [style]",
   description: "Turn plain-words time into a Discord timestamp tag.",
   details:

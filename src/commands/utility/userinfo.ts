@@ -127,6 +127,7 @@ export async function buildUserInfoEmbed(member: GuildMember): Promise<{ embed: 
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
+  name: "userinfo",
   usage: "userinfo [@user]",
   description: "Full profile on any member — badges, roles, dates, banner.",
   details:

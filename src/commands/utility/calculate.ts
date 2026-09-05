@@ -1,5 +1,6 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { safeEvaluate } from "../../lib/safeMath.js";
 import { escapeCodeBlock } from "../../lib/validation.js";
@@ -23,6 +24,7 @@ async function buildEmbed(expression: string) {
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
+  name: "calculate",
   usage: "calc <expression>",
   description: "Evaluate math — from basic sums to sqrt, trig, and powers.",
   details:
@@ -35,7 +37,7 @@ const command: Command = {
   prefixNames: ["calculate", "calc", "math"],
   async prefixExecute(message: Message, args: string[]) {
     if (args.length === 0) {
-      await message.reply("Usage: `>calc <expression>` — e.g. `>calc (3 + 4) * 2`");
+      await message.reply(`Usage: \`${config.prefix}calc <expression>\` — e.g. \`${config.prefix}calc (3 + 4) * 2\``);
       return;
     }
     const expression = args.join(" ").slice(0, 200);

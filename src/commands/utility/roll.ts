@@ -41,6 +41,7 @@ const INVALID_NOTATION_MESSAGE = (notation: string) =>
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
+  name: "roll",
   usage: "roll [notation]",
   description: "Roll dice with standard notation (2d6+3).",
   details:
