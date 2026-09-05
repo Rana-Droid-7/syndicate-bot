@@ -40,7 +40,7 @@ export interface Command {
    * commands where the one-liner says it all.
    */
   details?: string;
-  /** Human-facing usage line, e.g. ">remindme <time> <text>" or "/kick <user> [reason]". */
+  /** Human-facing usage line, e.g. "remindme <time> <text>" or "/kick <user> [reason]" (prefix-free for prefix commands). */
   usage: string;
   /** Short examples shown in help detail pages. */
   examples?: string[];
