@@ -70,7 +70,18 @@ function makeMessage(content, { authorId = "222222222222222222", authorBot = fal
     reply: async (payload) => {
       replyCount++;
       replies.push(typeof payload === "string" ? payload : JSON.stringify(payload, replacer).slice(0, 300));
-      return { edit: async () => null, createdTimestamp: Date.now() };
+      return {
+        id: "777777777777777777",
+        edit: async () => null,
+        createdTimestamp: Date.now(),
+        // Button/collector commands (poll, rps) need a collector on the
+        // reply; the mock runs it with an instantly-expiring timer and
+        // a no-op 'collect' path — no live components in the harness.
+        createMessageComponentCollector: () => ({
+          on: () => {},
+          stop: () => {},
+        }),
+      };
     },
     react: async () => null,
   };
@@ -89,10 +100,20 @@ async function runCommand(modulePath, content, opts = {}) {
   args.shift()?.toLowerCase();
   const myReplies = [];
   const message = makeMessage(content, opts);
-  // Bind THIS run's reply capture.
+  // Bind THIS run's reply capture. The returned object also carries a
+  // no-op component collector so button-based commands (poll, rps)
+  // exercise their full reply path in the harness.
   message.reply = async (payload) => {
     myReplies.push(typeof payload === "string" ? payload : JSON.stringify(payload, replacer).slice(0, 300));
-    return { edit: async () => null, createdTimestamp: Date.now() };
+    return {
+      id: "777777777777777777",
+      edit: async () => null,
+      createdTimestamp: Date.now(),
+      createMessageComponentCollector: () => ({
+        on: () => {},
+        stop: () => {},
+      }),
+    };
   };
   message.channel.send = async (c) => { myReplies.push(String(c)); return { id: "x" }; };
   try {
@@ -318,6 +339,30 @@ console.log("\n=== COOLSIES ===");
     const res = await runCommand(C, input);
     report(`choose: ${label ?? input}`, ok ? res.ok : !res.ok || res.replies.length > 0);
   }
+
+  // ---- rps: instant mode via prefix (button mode needs live
+  // components; the invoker-filter logic is unit-pinned) ----
+  const RP = "./dist/commands/coolsies/rps.js";
+  let rr = await runCommand(RP, ">rps rock");
+  report("rps: instant round works", rr.ok && rr.replies.length > 0);
+  rr = await runCommand(RP, ">rps banana");
+  report("rps: invalid weapon -> clean error", rr.ok && rr.replies.length > 0);
+  rr = await runCommand(RP, ">rps paper");
+  report("rps: paper instant round", rr.ok && rr.replies.length > 0);
+
+  // ---- poll: prefix arg parsing end-to-end (buttons need live
+  // components; parsePollArgs unit tests pin the boundary math) ----
+  const P = "./dist/commands/utility/poll.js";
+  let pr = await runCommand(P, '>poll "best food?" "pizza" "pasta" "curry" 10');
+  report("poll: quoted question + 3 options + minutes", pr.ok, pr.ok ? "" : `threw: ${pr.error?.message}`);
+  pr = await runCommand(P, ">poll lunch? sushi ramen");
+  report("poll: unquoted fast shape", pr.ok, pr.ok ? "" : `threw: ${pr.error?.message}`);
+  pr = await runCommand(P, '>poll "only one option"');
+  report("poll: too few options -> clean error", !pr.ok || pr.replies.length > 0);
+  pr = await runCommand(P, '>poll "q?" "a" "b" 99');
+  report("poll: 99 minutes rejected", !pr.ok || pr.replies.length > 0);
+  pr = await runCommand(P, '>poll "q?" "a" "b" "c" "d" "e" "f" "g" "h" "i" "j" "k"');
+  report("poll: 11 options rejected", !pr.ok || pr.replies.length > 0);
 
   const R8 = "./dist/commands/coolsies/8ball.js";
   const r8 = await runCommand(R8, ">8ball will it work?");

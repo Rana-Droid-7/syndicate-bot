@@ -25,6 +25,8 @@ export const suggestionRepository = {
     );
   },
 
+  /** Read path for the (upcoming) admin review workflow; the
+   *  integration harness also verifies inserts through it. */
   forGuild(guildId: string, status?: string): SuggestionRow[] {
     if (status) {
       return getDb()
