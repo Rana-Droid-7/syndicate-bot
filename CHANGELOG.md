@@ -2,6 +2,29 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
 
+## v0.6.2-beta — 2026-09-05 (two strict scenario-audit cycles)
+
+Every category, command, and surface probed with usage/abuse/spam scenarios; raw-socket and concurrency attacks against the dashboard.
+
+### Fixed
+- **8-ball gate misparse**: questions that merely START with a management verb word (`8ball remove the doubt, will it work?`) were wrongly answered with "management is developer-only". The gate now triggers only on the management SHAPE — `list [page]`, `remove/edit/enable/disable <numeric id>`, or `add` + content; prose is always answered. Pinned with 6 new scenario tests.
+- **Dashboard body-reader race**: oversized-body rejection could double-settle the read promise and logged an expected abuse condition as a full error stack. Rewritten with a single-settle finish; abuse now logs a clean warn (`Body too large` no longer stack-noises the console).
+- **`hash-password` accepted whitespace-only passwords** (`"        "` hashed fine) — now trimmed and re-validated before hashing.
+- **Login strike map grew forever** — expired lockouts and stale strike counters are now swept on the session-sweeper tick.
+- **Dashboard `?notice=` param unbounded** — a hand-crafted URL could bloat the page; capped at 200 chars.
+- **Malformed dashboard hash UX**: a present-but-malformed `DASHBOARD_PASSWORD_HASH` previously booted a dashboard that could never accept any password — now refuses to start with the exact expected format (previously only a *missing* hash refused).
+- **Sub-second reminders** (`remindme "in 0.0001 seconds" x`) fired before the confirmation reply landed — now round up to one second.
+- verify-dashboard.mjs: abandoned second-server scaffolding (dead import + stale port comment) removed.
+
+### Verified by new scenario probes (all passing, most pinned in harnesses)
+- Raw-socket abuse: 2.5MB body flood, absolute-form/asterisk request targets, mid-body RST — server survives all, no crash, no unhandled rejection
+- 30-way concurrent dashboard requests: zero 5xx, all writes persisted, sessions intact
+- Session fixation: token rotates on every login; malformed cookie values rejected cleanly
+- Cooldown keys: 25 unique, aliases correctly share one key, zero collisions (re-verified after the 0.5.4 '?' bug class)
+- canModerate matrix: all 6 hierarchy cases + owner override re-verified
+- Seed data: 19+10 rows, no duplicates/mojibake, SQL apostrophe escapes intact
+- Hash validation: truncated and low-iteration (<10k) hashes refused
+
 ## v0.6.1-beta — 2026-09-05 (dashboard polish + strict-audit round)
 
 The dashboard grows up, then the whole project goes through another multi-cycle strict audit.

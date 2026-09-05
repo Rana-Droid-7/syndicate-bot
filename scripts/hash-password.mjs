@@ -23,8 +23,10 @@ async function main() {
     password = await rl.question("");
     rl.close();
   }
+  // Trim before ANY check: "        " is not a password.
+  password = (password ?? "").trim();
   if (!password || password.length < 8) {
-    console.error("Password must be at least 8 characters.");
+    console.error("Password must be at least 8 (non-whitespace) characters.");
     process.exit(1);
   }
 

@@ -1,4 +1,4 @@
-# Syndicate Bot — v0.6.1-beta
+# Syndicate Bot — v0.6.2-beta
 
 A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
 moderation, admin, and developer tiers — built with discord.js +
@@ -79,7 +79,7 @@ prefix input gets a **starts-with lookup** (`>se` → serverinfo,
 setnick, userinfo...) or a **typo suggestion** (`>halp` → "did you
 mean **>help**?").
 
-## Commands (v0.6.0-beta)
+## Commands (v0.6.2-beta)
 
 ### 🛠️ Utility — prefix only, open to everyone
 `help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `poll`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` (aliases: `calc`, `math`; `whois`, `ui`; `av`, `pfp`; `ts`, and more).
@@ -110,10 +110,11 @@ npm run hash-password          # generate your dashboard password hash → paste
 npm start                      # dashboard at http://127.0.0.1:3721
 ```
 
-From there: manage jokes and 8-ball responses (add/disable/remove),
-review and approve/reject suggestions, watch live stats, and
-reboot/shutdown the process — the same actions as `/boot`, from your
-browser.
+From there: manage jokes and 8-ball responses (add / edit / enable /
+disable / remove), review suggestions (approve / reject / implement),
+watch live stats (guilds, members, uptime, warnings, AFK, pending
+reminders), and reboot/shutdown the process — the same actions as
+`/boot`, from your browser.
 
 ## Persistence
 

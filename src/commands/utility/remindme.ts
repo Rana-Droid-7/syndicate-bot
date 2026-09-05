@@ -26,6 +26,12 @@ function parseAndValidate(timeInput: string): { date: Date; delayMs: number } {
   }
   const delayMs = parsedDate.getTime() - Date.now();
   if (delayMs <= 0) throw new UserInputError("That time is in the past — give me a time in the future.");
+  // Sub-second parses ("in 0.0001 seconds") would fire the timer
+  // before the confirmation reply even lands — pointless. Anything
+  // under a second rounds up to one.
+  if (delayMs < 1_000) {
+    return { date: new Date(Date.now() + 1_000), delayMs: 1_000 };
+  }
   if (delayMs > MAX_DELAY_MS) {
     throw new UserInputError("That's more than 30 days out — reminders cap at 30 days.");
   }

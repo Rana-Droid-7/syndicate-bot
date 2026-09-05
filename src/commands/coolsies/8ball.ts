@@ -66,12 +66,24 @@ const command: Command = {
     //   8ball add "absolutely, yes."  ->  ["add", "absolutely, yes."]
     const first = (args[0] ?? "").toLowerCase();
 
-    // If the first word isn't a management subcommand, the WHOLE
-    // message is a question — no developer gate applies. This must
-    // be decided BEFORE the management dispatch, or "will I win?"
-    // style questions starting with arbitrary words would be
-    // wrongly denied for regular users.
-    if (!MANAGEMENT_SUBS.has(first)) {
+    // Management detection: the first word must be a management verb
+    // AND the message must look like a management invocation — not a
+    // question that merely STARTS with one of the verbs ("add" is a
+    // plausible question word: '8ball "add" more RAM?').
+    //   add                            -> verb + nonempty text
+    //   list [page]                    -> optional lone integer
+    //   remove/edit/enable/disable <id>-> verb + numeric ID
+    // Anything else (prose, trailing question mark, no ID...) is a
+    // question and never touches the developer gate.
+    const looksLikeManagement = (() => {
+      if (!MANAGEMENT_SUBS.has(first)) return false;
+      const rest = args.slice(1);
+      if (first === "add") return rest.length > 0 && rest.join(" ").trim().length > 0;
+      if (first === "list") return rest.length === 0 || (rest.length === 1 && /^\d+$/.test(rest[0]));
+      return rest.length >= 1 && /^\d+$/.test(rest[0]);
+    })();
+
+    if (!looksLikeManagement) {
       const question = args.join(" ").trim();
       if (!question) {
         throw new UserInputError("Ask me a question — try `8ball will I win the lottery?`.");

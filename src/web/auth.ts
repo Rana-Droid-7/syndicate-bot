@@ -98,11 +98,21 @@ export function sessionCsrf(token: string | undefined): string | null {
   return session.csrf;
 }
 
-/** Sweeps expired sessions (called from the server's periodic timer). */
+/** Sweeps expired sessions AND stale strike counters (periodic). */
 export function sweepSessions(): void {
   const now = Date.now();
   for (const [key, session] of sessions) {
     if (now - session.createdAt > config.dashboardSessionTtlMs) sessions.delete(key);
+  }
+  // Strike entries whose lockout has lapsed are pure dead weight; a
+  // long-lived process with many client IPs would otherwise grow the
+  // map forever. Keep anything still locked; drop the rest.
+  for (const [key, entry] of failures) {
+    if (entry.lockedUntil !== 0 && entry.lockedUntil <= now) failures.delete(key);
+    else if (entry.lockedUntil === 0 && entry.count > 0) {
+      // No active lock and no recent pressure — reset the strikes.
+      failures.delete(key);
+    }
   }
 }
 

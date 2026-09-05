@@ -114,20 +114,11 @@ console.log("\n=== LOGIN + LOCKOUT ===");
   report("correct password also rejected during lockout", lockedCorrect.status === 429, `got ${lockedCorrect.status}`);
 }
 
-// Lockout blocks further tests — restart the module fresh by
-// clearing the failure map through a reimport is not possible, so
-// the harness spins a SECOND server on another port for the rest.
-const { startDashboard: startSecond } = await import("./dist/web/server.js");
-process.env.DASHBOARD_PORT = "3998";
-// Rebinding config is frozen — instead, the second instance shares
-// the module state; we can't restage it. Simplest: new port via env
-// is also frozen. So: the lockout is PER-IP across servers by
-// design; the harness accepts this and tests remaining flows on a
-// fresh Node process would be overkill — instead we prove the rest
-// with the same server AFTER lockout expiry is simulated by direct
-// map access through the auth module.
+// The lockout is per-IP and module-private state — the harness
+// continues on the same server by clearing the strike counter via
+// the exported operator API (exactly what a real operator restart
+// achieves, minus the downtime).
 const auth = await import("./dist/web/auth.js");
-// The failures map is module-private; clearFailures is exported.
 auth.clearFailures("127.0.0.1");
 report("lockout clears via operator API", (await req("POST", "/login", { body: { password: "bad" } })).status === 401);
 

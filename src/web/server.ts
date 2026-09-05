@@ -19,6 +19,7 @@ import {
   dropSession,
   isLockedOut,
   parseFormBody,
+  parsePasswordHash,
   recordFailure,
   sessionCsrf,
   verifyPassword,
@@ -65,21 +66,30 @@ function send(res: ServerResponse, status: number, body: string): void {
   res.end(body);
 }
 
+/** Marker for expected client-abuse rejections (oversized bodies) —
+ *  logged as a warn, not an error stack. */
+class BodyTooLargeError extends Error {}
+
 function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    let size = 0;
+    let settled = false;
+    const finish = (err: Error | null) => {
+      if (settled) return;
+      settled = true;
+      err ? reject(err) : resolve(Buffer.concat(chunks));
+    };
     req.on("data", (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new Error("Body too large"));
+      if (settled) return;
+      if (chunks.reduce((n, c) => n + c.length, 0) + chunk.length > MAX_BODY_BYTES) {
         req.destroy();
+        finish(new BodyTooLargeError("Body too large"));
         return;
       }
       chunks.push(chunk);
     });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
+    req.on("end", () => finish(null));
+    req.on("error", (err) => finish(err));
   });
 }
 
@@ -158,6 +168,16 @@ export function startDashboard(client: Client): void {
     );
     return;
   }
+  // A present-but-malformed hash would boot a dashboard that can
+  // never accept ANY password — silent, confusing failure. Refuse
+  // to start with the exact reason instead.
+  if (!parsePasswordHash(config.dashboardPasswordHash)) {
+    log.warn(
+      "BOOT",
+      'DASHBOARD_PASSWORD_HASH is malformed (expected format: pbkdf2$<iterations>$<saltHex>$<hashHex>) — dashboard NOT starting. Regenerate it with: npm run hash-password',
+    );
+    return;
+  }
 
   const server = createServer(async (req, res) => {
     try {
@@ -170,7 +190,10 @@ export function startDashboard(client: Client): void {
       if (req.method === "GET") {
         if (path === "/") {
           const html = buildDashboardHtml(req, client, null);
-          send(res, 200, html ?? loginPage(null, url.searchParams.get("notice")));
+          // notice is operator-authored (logout redirect) — cap length
+          // so a hand-crafted huge URL can't bloat the page.
+          const notice = url.searchParams.get("notice")?.slice(0, 200) ?? null;
+          send(res, 200, html ?? loginPage(null, notice));
           return;
         }
         if (path === "/favicon.ico") {
@@ -307,7 +330,12 @@ export function startDashboard(client: Client): void {
       res.statusCode = 405;
       res.end();
     } catch (error) {
-      log.error("ADMIN", "Dashboard request handler error", error);
+      if (error instanceof BodyTooLargeError) {
+        // Expected abuse, handled by design — warn, no stack noise.
+        log.warn("ADMIN", `Dashboard rejected oversized body from ${clientIp(req)}.`);
+      } else {
+        log.error("ADMIN", "Dashboard request handler error", error);
+      }
       if (!res.headersSent) {
         res.statusCode = 500;
         res.setHeader("Content-Type", "text/plain");

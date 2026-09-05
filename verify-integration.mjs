@@ -371,6 +371,20 @@ console.log("\n=== COOLSIES ===");
   report("8ball: no question rejected", !r8b.ok || r8b.replies.length > 0);
   const r8c = await runCommand(R8, `>8ball ${"q".repeat(300)}`);
   report("8ball: long question rejected", !r8c.ok || r8c.replies.length > 0);
+  // v0.6.2: questions that merely START with a management verb word
+  // must be answered, not gated. Only the management SHAPE triggers
+  // the developer gate.
+  const r8d = await runCommand(R8, ">8ball remove the doubt, will it work?");
+  report("8ball: 'remove ...' prose question is answered", r8d.ok && r8d.replies.length > 0, "gated as management?");
+  const r8e = await runCommand(R8, ">8ball edit this: am I lucky?");
+  report("8ball: 'edit ...' prose question is answered", r8e.ok && r8e.replies.length > 0, "gated as management?");
+  const r8f = await runCommand(R8, ">8ball list of things I like?");
+  report("8ball: 'list ...' prose question is answered", r8f.ok && r8f.replies.length > 0, "gated as management?");
+  const r8g = await runCommand(R8, ">8ball enable happiness in my life?");
+  report("8ball: 'enable ...' prose question is answered", r8g.ok && r8g.replies.length > 0, "gated as management?");
+  // but the real management shape still gates non-devs:
+  const r8h = await runCommand(R8, ">8ball remove 12", { authorId: "222222222222222222" });
+  report("8ball: real 'remove <id>' still developer-gated", !r8h.ok || r8h.replies.some((x) => String(x).includes("developer")));
 
   // 8-ball management suite (mirrors the joke suite)
   {

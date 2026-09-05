@@ -15,6 +15,18 @@ interface ReleaseNotes {
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
   {
+    version: "0.6.2-beta",
+    date: "2026-09-05",
+    highlights: [
+      "**8-ball gate fixed** — questions like `8ball remove the doubt, will it work?` are answered again, not gated; only real management shapes trigger the developer check",
+      "**Dashboard hardened** — body-reader race fixed, strike map swept clean, oversized/malformed inputs logged calmly",
+      "**hash-password** no longer accepts whitespace-only passwords",
+      "**Malformed hash now refuses to boot** the dashboard instead of silently never accepting any password",
+      "Sub-second reminders round up to a second",
+      "Raw-socket floods, 30-way concurrency, session fixation — all probed, all survived",
+    ],
+  },
+  {
     version: "0.6.1-beta",
     date: "2026-09-05",
     highlights: [
