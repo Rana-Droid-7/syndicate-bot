@@ -1,4 +1,4 @@
-# Syndicate Bot — v0.5.4-beta
+# Syndicate Bot — v0.6.0-beta
 
 A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
 moderation, admin, and developer tiers — built with discord.js +
@@ -73,7 +73,7 @@ prefix input gets a **starts-with lookup** (`>se` → serverinfo,
 setnick, userinfo...) or a **typo suggestion** (`>halp` → "did you
 mean **>help**?").
 
-## Commands (v0.5.4-beta)
+## Commands (v0.6.0-beta)
 
 ### 🛠️ Utility — prefix only, open to everyone
 `help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `poll`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` (aliases: `calc`, `math`; `whois`, `ui`; `av`, `pfp`; `ts`, and more).
@@ -89,6 +89,25 @@ mean **>help**?").
 
 ### 🔑 Developer — slash only, trusted user IDs only
 `/boot` — DMs you a private Reboot/Shutdown/Cancel panel.
+
+## Local dashboard (v0.6.0)
+
+A browser-based management console, hosted by the bot itself —
+**localhost only** (binds 127.0.0.1; nothing on the network can reach
+it). Password-gated with PBKDF2, sessions with CSRF tokens, login
+rate-limiting, and every action runs through the same service layer
+the Discord commands use.
+
+```bash
+npm run hash-password          # generate your dashboard password hash → paste into .env
+# .env: DASHBOARD_ENABLED=true  +  DASHBOARD_PASSWORD_HASH=pbkdf2$...
+npm start                      # dashboard at http://127.0.0.1:3721
+```
+
+From there: manage jokes and 8-ball responses (add/disable/remove),
+review and approve/reject suggestions, watch live stats, and
+reboot/shutdown the process — the same actions as `/boot`, from your
+browser.
 
 ## Persistence
 

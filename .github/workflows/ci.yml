@@ -42,3 +42,6 @@ jobs:
 
       - name: Integration + attack harness
         run: node verify-integration.mjs
+
+      - name: Dashboard security harness
+        run: node verify-dashboard.mjs

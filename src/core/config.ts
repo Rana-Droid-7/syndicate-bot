@@ -44,7 +44,7 @@ const projectRoot = path.resolve(__dirname, "..", "..");
 
 export const config = {
   botName: "Syndicate Bot",
-  version: "0.5.4-beta",
+  version: "0.6.0-beta",
   author: "Ranajoy Roy",
 
   token: requireEnv("DISCORD_TOKEN"),
@@ -87,4 +87,19 @@ export const config = {
   // SQLite database file (relative to project root). WAL journal
   // files (.wal/.shm) appear next to it at runtime.
   databaseFile: process.env.DATABASE_FILE || "data/syndicate.db",
+
+  // ---- Local management dashboard (localhost only) ----
+  // A browser UI for the bot's operator: manage jokes, 8-ball
+  // responses, and suggestions, and reboot/shutdown the process.
+  // Binds 127.0.0.1 ONLY — unreachable from the network by design;
+  // exposing it requires an explicit, deliberate override and a
+  // correctly-set password hash.
+  dashboardEnabled: process.env.DASHBOARD_ENABLED === "true",
+  dashboardHost: process.env.DASHBOARD_HOST || "127.0.0.1",
+  dashboardPort: Number(process.env.DASHBOARD_PORT) || 3721,
+  // PBKDF2 hash of the dashboard password (format:
+  // pbkdf2$<iterations>$<saltHex>$<hashHex>). Required to boot the
+  // dashboard — never store or accept a plaintext password here.
+  dashboardPasswordHash: process.env.DASHBOARD_PASSWORD_HASH || null,
+  dashboardSessionTtlMs: 2 * 60 * 60 * 1000, // 2h session lifetime
 } as const;

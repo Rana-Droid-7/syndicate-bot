@@ -10,6 +10,7 @@ import { flushLogSink, initLogSink } from "./core/logSink.js";
 import { closeDb, getDb, runMigrations } from "./database/client.js";
 import { reminderService } from "./services/reminders.js";
 import { warmAfkIndex } from "./services/afk.js";
+import { startDashboard } from "./web/server.js";
 
 // Safety net: a single failed interaction/API call anywhere in the
 // bot should never be able to take the whole process down. Every
@@ -168,6 +169,12 @@ async function main() {
   // Warm the in-memory AFK index from the database so the per-message
   // hot path never needs a SELECT before the first set/clear.
   warmAfkIndex();
+
+  // Local management dashboard (localhost-only, password-gated,
+  // sessions+CSRF). Boots only when explicitly enabled AND a valid
+  // password hash is configured — see web/server.ts for the full
+  // security model. Refuses to start otherwise, loudly.
+  startDashboard(client);
 }
 
 main().catch((error) => {

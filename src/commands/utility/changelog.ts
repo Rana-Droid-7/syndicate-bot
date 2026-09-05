@@ -15,6 +15,18 @@ interface ReleaseNotes {
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
   {
+    version: "0.6.0-beta",
+    date: "2026-09-05",
+    highlights: [
+      "**Local dashboard** — the bot now hosts a browser console at localhost for its operator",
+      "Manage **jokes** and **8-ball responses** (add/disable/enable/remove), **review suggestions** (approve/reject), watch live stats",
+      "**Reboot / shutdown** from the browser — identical semantics to the /boot panel",
+      "**Hardened by design**: localhost-only binding, PBKDF2-hashed password (never plaintext), rate-limited login, CSRF-protected sessions",
+      "Every dashboard action runs through the same service layer the Discord commands use",
+      "29-check security harness attacking the real server — wired into npm run verify",
+    ],
+  },
+  {
     version: "0.5.4-beta",
     date: "2026-09-05",
     highlights: [

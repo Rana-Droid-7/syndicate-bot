@@ -1,0 +1,328 @@
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { Client } from "discord.js";
+import { config } from "../core/config.js";
+import { log } from "../core/logger.js";
+import { formatDuration } from "../lib/format.js";
+import { gracefulExit } from "../lib/shutdown.js";
+import { jokeService } from "../services/jokes.js";
+import { eightBallService } from "../services/eightball.js";
+import { suggestionRepository } from "../repositories/suggestions.js";
+import { reminderRepository } from "../repositories/reminders.js";
+import {
+  clientIp,
+  clearFailures,
+  createSession,
+  dropSession,
+  isLockedOut,
+  parseFormBody,
+  recordFailure,
+  sessionCsrf,
+  verifyPassword,
+  sweepSessions,
+} from "./auth.js";
+import { dashboardPage, loginPage, type CollectionItem, type DashboardData } from "./pages.js";
+
+/**
+ * The localhost management dashboard.
+ *
+ * Security model (layered, defense in depth):
+ *  1. NETWORK: binds 127.0.0.1 by default — remote hosts cannot even
+ *     open a connection. Binding elsewhere requires a deliberate
+ *     DASHBOARD_HOST override AND a valid password hash.
+ *  2. AUTH: PBKDF2-hashed password, timing-safe verification, 5-strike
+ *     rate limit with 10-minute lockout.
+ *  3. SESSIONS: 256-bit random tokens, SHA-256-hashed at rest,
+ *     2-hour TTL, per-session CSRF token required on every POST.
+ *  4. ACTIONS: only operator verbs, executed through the SAME service
+ *     layer the Discord commands use — no new SQL, no privilege
+ *     escalation, all mutations logged to the mirrored ADMIN feed.
+ *
+ * Refuses to boot without a valid password hash — an unauthenticated
+ * dashboard is worse than none.
+ */
+
+const MAX_BODY_BYTES = 64 * 1024; // forms are tiny; anything bigger is abuse
+const SESSION_COOKIE = "syndicate_session";
+
+function setSecurityHeaders(res: ServerResponse): void {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+}
+
+function send(res: ServerResponse, status: number, body: string): void {
+  res.statusCode = status;
+  res.end(body);
+}
+
+function readBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("Body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+function sessionTokenOf(req: IncomingMessage): string | undefined {
+  const cookie = req.headers.cookie ?? "";
+  for (const part of cookie.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === SESSION_COOKIE) return rest.join("=");
+  }
+  return undefined;
+}
+
+function buildDashboardHtml(
+  req: IncomingMessage,
+  client: Client,
+  banner: DashboardData["banner"],
+): string | null {
+  const token = sessionTokenOf(req);
+  const csrf = sessionCsrf(token);
+  if (!csrf) return null;
+
+  const jokes: CollectionItem[] = jokeService.list(15, 0).map((j) => ({
+    id: j.id, content: j.content, enabled: j.enabled === 1,
+  }));
+  const responses: CollectionItem[] = eightBallService.list(15, 0).map((r) => ({
+    id: r.id, content: r.content, enabled: r.enabled === 1,
+  }));
+  // Suggestions come from Discord users — hostile text, escaped in pages.ts.
+  const suggestions = suggestionRepository.recent(15).map((s) => ({
+    id: s.id, content: s.content, status: s.status, author: s.author_id, at: s.created_at,
+  }));
+
+  return dashboardPage(
+    {
+      jokes,
+      responses,
+      suggestions,
+      banner,
+      stats: {
+        guilds: client.guilds?.cache?.size ?? 0,
+        users: client.guilds?.cache?.reduce((acc, g) => acc + (g.memberCount ?? 0), 0) ?? 0,
+        uptime: formatDuration(client.uptime ?? 0),
+        reminders: reminderRepository.pending().length,
+      },
+    },
+    csrf,
+    token ?? "",
+  );
+}
+
+function redirect(res: ServerResponse, location: string, token?: string): void {
+  res.statusCode = 302;
+  res.setHeader("Location", location);
+  if (token) {
+    res.setHeader(
+      "Set-Cookie",
+      `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${config.dashboardSessionTtlMs / 1000}`,
+    );
+  }
+  res.end();
+}
+
+export function startDashboard(client: Client): void {
+  if (!config.dashboardEnabled) {
+    log.debug("BOOT", "Dashboard disabled (DASHBOARD_ENABLED not \"true\").");
+    return;
+  }
+  if (!config.dashboardPasswordHash) {
+    log.warn(
+      "BOOT",
+      'DASHBOARD_ENABLED=true but DASHBOARD_PASSWORD_HASH is not set — dashboard NOT starting. Generate one with: node scripts/hash-password.mjs',
+    );
+    return;
+  }
+
+  const server = createServer(async (req, res) => {
+    try {
+      setSecurityHeaders(res);
+      const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+      const path = url.pathname;
+      const ip = clientIp(req);
+
+      // ---------- GET ----------
+      if (req.method === "GET") {
+        if (path === "/") {
+          const html = buildDashboardHtml(req, client, null);
+          send(res, 200, html ?? loginPage(null, url.searchParams.get("notice")));
+          return;
+        }
+        if (path === "/favicon.ico") {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+        send(res, 404, loginPage("Not found.", null));
+        return;
+      }
+
+      // ---------- POST ----------
+      if (req.method === "POST") {
+        const body = await readBody(req);
+        const form = parseFormBody(body);
+
+        if (path === "/login") {
+          if (isLockedOut(ip)) {
+            log.warn("ADMIN", `Dashboard login attempt from locked-out ${ip}.`);
+            send(res, 429, loginPage("Too many failed attempts — try again in 10 minutes.", null));
+            return;
+          }
+          const password = form.get("password") ?? "";
+          if (!(await verifyPassword(password))) {
+            recordFailure(ip);
+            log.warn("ADMIN", `Dashboard login FAILURE from ${ip}.`);
+            send(res, 401, loginPage("Wrong password.", null));
+            return;
+          }
+          clearFailures(ip);
+          const { token } = createSession();
+          log.info("ADMIN", `Dashboard login OK from ${ip} — session created.`);
+          redirect(res, "/", token);
+          return;
+        }
+
+        // Everything below requires a valid session + CSRF token.
+        const csrf = sessionCsrf(sessionTokenOf(req));
+        if (!csrf) {
+          send(res, 401, loginPage("Session expired — sign in again.", null));
+          return;
+        }
+        if (form.get("csrf") !== csrf) {
+          log.warn("ADMIN", `Dashboard POST with bad/missing CSRF from ${ip} (${path}).`);
+          send(res, 403, loginPage("Invalid request token — sign in again.", null));
+          return;
+        }
+
+        if (path === "/logout") {
+          dropSession(sessionTokenOf(req)!);
+          log.info("ADMIN", "Dashboard session signed out.");
+          redirect(res, "/?notice=Signed%20out.");
+          return;
+        }
+
+        if (path === "/action/reboot" || path === "/action/shutdown") {
+          // The request itself (valid session + CSRF) is the confirmation.
+          log.warn("ADMIN", `Dashboard process control: ${path === "/action/reboot" ? "REBOOT" : "SHUTDOWN"} requested.`);
+          send(res, 200, `<html><body style="background:#13131c;color:#e4e4ef;font-family:system-ui;padding:40px">
+            <h2>✅ ${path === "/action/reboot" ? "Rebooting" : "Shutting down"}…</h2>
+            <p style="color:#77778f">This tab can be closed.</p></body></html>`);
+          // Let the response flush before tearing the process down.
+          setTimeout(() => {
+            void gracefulExit(client, {
+              reboot: path === "/action/reboot",
+              reason: "dashboard",
+              requestedBy: ip,
+            });
+          }, 250);
+          return;
+        }
+
+        // /action/<kind>/<verb>[/<id>]
+        const actionMatch = path.match(/^\/action\/([a-z]+)\/([a-z]+)(?:\/(\d+))?$/);
+        if (actionMatch) {
+          const [, kind, verb, idStr] = actionMatch;
+          const id = idStr ? Number(idStr) : null;
+          let banner: { kind: "ok" | "fail"; text: string };
+
+          try {
+            banner = runAction(kind, verb, id, form);
+          } catch (error) {
+            log.error("ADMIN", `Dashboard action failed: ${kind}/${verb}${id ? "/" + id : ""}`, error);
+            banner = { kind: "fail", text: "That action failed — check the bot console." };
+          }
+
+          const html = buildDashboardHtml(req, client, banner);
+          send(res, 200, html ?? loginPage(null, null));
+          return;
+        }
+
+        send(res, 404, loginPage("Not found.", null));
+        return;
+      }
+
+      res.statusCode = 405;
+      res.end();
+    } catch (error) {
+      log.error("ADMIN", "Dashboard request handler error", error);
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "text/plain");
+      }
+      res.end("Internal error");
+    }
+  });
+
+  // Session sweeper — expired tokens never linger.
+  const sweepTimer = setInterval(() => sweepSessions(), 10 * 60 * 1000);
+  sweepTimer.unref();
+
+  server.listen(config.dashboardPort, config.dashboardHost, () => {
+    log.info(
+      "BOOT",
+      `Dashboard listening on http://${config.dashboardHost}:${config.dashboardPort} (auth: PBKDF2, sessions+CSRF, rate-limited).`,
+    );
+  });
+
+  server.on("error", (error) => {
+    log.error("BOOT", `Dashboard failed to start: ${error instanceof Error ? error.message : String(error)}`);
+  });
+}
+
+/** Executes an operator action through the service layer. Returns the UI banner. */
+function runAction(
+  kind: string,
+  verb: string,
+  id: number | null,
+  form: Map<string, string>,
+): { kind: "ok" | "fail"; text: string } {
+  const fail = (text: string) => ({ kind: "fail" as const, text });
+  const ok = (text: string) => ({ kind: "ok" as const, text });
+
+  if (kind === "joke" || kind === "response") {
+    const svc = kind === "joke" ? jokeService : eightBallService;
+    const noun = kind === "joke" ? "Joke" : "Response";
+
+    if (verb === "add") {
+      const content = (form.get("content") ?? "").trim();
+      if (!content) return fail("Empty content — nothing added.");
+      const newId = svc.add(content, "dashboard");
+      return ok(`${noun} #${newId} added.`);
+    }
+    if (id === null) return fail("Missing ID.");
+    if (verb === "remove") {
+      return svc.remove(id) ? ok(`${noun} #${id} removed.`) : fail(`No ${noun.toLowerCase()} #${id}.`);
+    }
+    if (verb === "enable") {
+      return svc.setEnabled(id, true) ? ok(`${noun} #${id} enabled.`) : fail(`No ${noun.toLowerCase()} #${id}.`);
+    }
+    if (verb === "disable") {
+      return svc.setEnabled(id, false) ? ok(`${noun} #${id} disabled.`) : fail(`No ${noun.toLowerCase()} #${id}.`);
+    }
+    return fail(`Unknown verb "${verb}".`);
+  }
+
+  if (kind === "suggestion") {
+    if (id === null) return fail("Missing ID.");
+    if (verb !== "approve" && verb !== "reject") return fail(`Unknown verb "${verb}".`);
+    const status = verb === "approve" ? "approved" : "rejected";
+    suggestionRepository.setStatus(id, status);
+    log.info("ADMIN", `Dashboard: suggestion #${id} marked ${status}.`);
+    return ok(`Suggestion #${id} marked ${status}.`);
+  }
+
+  return fail(`Unknown action kind "${kind}".`);
+}

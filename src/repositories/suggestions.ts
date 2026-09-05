@@ -25,8 +25,14 @@ export const suggestionRepository = {
     );
   },
 
-  /** Read path for the (upcoming) admin review workflow; the
-   *  integration harness also verifies inserts through it. */
+  /** Newest suggestions across all guilds (dashboard review list). */
+  recent(limit: number): SuggestionRow[] {
+    return getDb()
+      .prepare(`SELECT * FROM suggestions ORDER BY id DESC LIMIT ?`)
+      .all(limit) as SuggestionRow[];
+  },
+
+  /** Read path for a single guild's list. */
   forGuild(guildId: string, status?: string): SuggestionRow[] {
     if (status) {
       return getDb()
@@ -36,5 +42,15 @@ export const suggestionRepository = {
     return getDb()
       .prepare(`SELECT * FROM suggestions WHERE guild_id = ? ORDER BY id DESC`)
       .all(guildId) as SuggestionRow[];
+  },
+
+  /** Review workflow transition (dashboard). Status validated by the
+   *  callers — 'approved'/'rejected' per the schema CHECK. */
+  setStatus(id: number, status: "approved" | "rejected" | "implemented" | "pending"): boolean {
+    return (
+      getDb()
+        .prepare(`UPDATE suggestions SET status = ? WHERE id = ?`)
+        .run(status, id).changes > 0
+    );
   },
 };
