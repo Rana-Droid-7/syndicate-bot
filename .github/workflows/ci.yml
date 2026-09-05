@@ -12,6 +12,12 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      # Placeholder credentials: several verification steps import the
+      # config module, which requires these to exist at load time. No
+      # real values are needed or used by any test or harness.
+      DISCORD_TOKEN: x
+      CLIENT_ID: "123456789012345678"
     steps:
       - uses: actions/checkout@v4
 
@@ -29,12 +35,6 @@ jobs:
         run: npm run build
 
       - name: Unit tests
-        env:
-          # Placeholder credentials: the unit suite imports the config
-          # module (via poll/parsePollArgs), which requires these to
-          # exist. No real values are needed or used by any test.
-          DISCORD_TOKEN: x
-          CLIENT_ID: "123456789012345678"
         run: node --test --test-reporter=spec dist/tests/unit.test.js
 
       - name: Timer verification (safeSetTimeout chaining)
