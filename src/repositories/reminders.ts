@@ -52,11 +52,4 @@ export const reminderRepository = {
   markFailed(id: number): void {
     getDb().prepare(`UPDATE reminders SET status = 'failed', delivered_at = datetime('now') WHERE id = ?`).run(id);
   },
-
-  /** Rows for one user's pending list (future feature, kept minimal). */
-  pendingForUser(userId: string): ReminderRow[] {
-    return getDb()
-      .prepare(`SELECT * FROM reminders WHERE user_id = ? AND status = 'pending' ORDER BY due_unix_ms`)
-      .all(userId) as ReminderRow[];
-  },
 };

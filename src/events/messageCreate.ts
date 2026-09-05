@@ -3,6 +3,7 @@ import type { BotEvent } from "../handlers/eventHandler.js";
 import type { SyndicateClient } from "../core/client.js";
 import { config } from "../core/config.js";
 import { baseEmbed, errorEmbed } from "../lib/embeds.js";
+import { sendDevLog } from "../lib/devlog.js";
 import { discordTimestamp, formatDuration } from "../lib/format.js";
 import {
   findClosestMatch,
@@ -14,13 +15,9 @@ import {
 import { parseQuotedArgs, escapeMarkdownBold } from "../lib/validation.js";
 import { cooldowns } from "../lib/cooldowns.js";
 import {
-  BotError,
-  CooldownError,
-  ContextError,
-  DatabaseError,
-  PermissionError,
-  UserInputError,
+  mapErrorToReply,
 } from "../lib/errors.js";
+import { errorDetail } from "../lib/safeError.js";
 import { afkService } from "../services/afk.js";
 import { log } from "../core/logger.js";
 
@@ -105,19 +102,42 @@ const event: BotEvent<"messageCreate"> = {
         const afkTargets = afkService.forMentions(guildId, mentionedIds);
         const notices: string[] = [];
 
+        // Discord caps embed descriptions at 4096 chars. A message
+        // mass-mentioning dozens of AFK users with long reasons could
+        // otherwise overflow the limit and lose the whole notice —
+        // cap the notice count AND the total char budget, and note
+        // how many were omitted.
+        const MAX_AFK_NOTICES = 10;
+        const AFK_NOTICE_CHAR_BUDGET = 3500;
+        let omitted = 0;
+        let budget = 0;
+
         for (const [userId, status] of afkTargets) {
           const key = `${guildId}:${message.channelId}:${userId}`;
           const last = afkNoticeLastSent.get(key) ?? 0;
           if (Date.now() - last < AFK_NOTICE_COOLDOWN_MS) continue;
+
+          const notice =
+            `**${escapeMarkdownBold(message.mentions.users.get(userId)?.username ?? "Someone")}** is AFK: ${status.reason} (since ${discordTimestamp(Math.floor(status.sinceUnixMs / 1000), "R")})`;
+
+          if (notices.length >= MAX_AFK_NOTICES || budget + notice.length > AFK_NOTICE_CHAR_BUDGET) {
+            // Consume the cooldown slot anyway so the omitted user
+            // isn't instantly re-noticed by the next message.
+            afkNoticeLastSent.set(key, Date.now());
+            omitted++;
+            continue;
+          }
+
           afkNoticeLastSent.set(key, Date.now());
-          notices.push(
-            `**${escapeMarkdownBold(message.mentions.users.get(userId)?.username ?? "Someone")}** is AFK: ${status.reason} (since ${discordTimestamp(Math.floor(status.sinceUnixMs / 1000), "R")})`,
-          );
+          notices.push(notice);
+          budget += notice.length + 1;
         }
 
         if (notices.length > 0) {
+          const body =
+            notices.join("\n") + (omitted > 0 ? `\n\n_…and ${omitted} more AFK member(s) not shown._` : "");
           await message
-            .reply({ embeds: [baseEmbed().setDescription(notices.join("\n"))] })
+            .reply({ embeds: [baseEmbed().setDescription(body)] })
             .catch((err) => log.error("AFK", "Failed to send AFK-mention notice", err));
         }
       }
@@ -137,10 +157,13 @@ const event: BotEvent<"messageCreate"> = {
 
     // ---- known command: dispatch with cooldown + error taxonomy ----
     if (command?.prefixExecute) {
+      // Cap what the dispatch log carries: a pasted 2000-char message
+      // full of quoted args would otherwise dump into the log mirror.
+      const loggedArgs = args.length > 8 ? [...args.slice(0, 8), `…+${args.length - 8} more`] : args;
       log.info(
         "PREFIX",
         `${config.prefix}${commandName} dispatched — user=${message.author.tag} (${message.author.id}), ` +
-          `guild=${guildId}, channel=${message.channelId}, args=${JSON.stringify(args)}`,
+          `guild=${guildId}, channel=${message.channelId}, args=${JSON.stringify(loggedArgs).slice(0, 300)}`,
       );
 
       try {
@@ -218,33 +241,25 @@ const event: BotEvent<"messageCreate"> = {
 
 /** Maps the error taxonomy to styled, informative user replies. */
 async function handleCommandError(message: Message, error: unknown, label: string): Promise<void> {
-  if (error instanceof CooldownError) {
-    await message.reply({ embeds: [errorEmbed(error.message)] }).catch(() => null);
-    return;
-  }
-  if (error instanceof UserInputError) {
-    const embed = errorEmbed(error.message);
-    if (error.usage) embed.addFields({ name: "Correct usage", value: `\`${error.usage}\``, inline: false });
+  const mapped = mapErrorToReply(error);
+
+  if (mapped) {
+    const embed = errorEmbed(mapped.description);
+    if (mapped.usage) embed.addFields({ name: "Correct usage", value: `\`${mapped.usage}\``, inline: false });
     await message.reply({ embeds: [embed] }).catch(() => null);
-    return;
-  }
-  if (error instanceof PermissionError) {
-    await message.reply({ embeds: [errorEmbed(error.message)] }).catch(() => null);
-    return;
-  }
-  if (error instanceof ContextError) {
-    await message.reply({ embeds: [errorEmbed(error.message)] }).catch(() => null);
-    return;
-  }
-  if (error instanceof DatabaseError) {
-    log.error("PREFIX", `Database failure during ${label}`, error);
-    await message
-      .reply({ embeds: [errorEmbed("Something's wrong with my storage — the developer has been notified. Try again in a moment.")] })
-      .catch(() => null);
-    return;
-  }
-  if (error instanceof BotError) {
-    await message.reply({ embeds: [errorEmbed(error.message)] }).catch(() => null);
+    if (mapped.notifyDeveloper) {
+      log.error("PREFIX", `Database failure during ${label}`, error);
+      await sendDevLog(
+        message.client,
+        baseEmbed()
+          .setTitle("⚠️ Database Error")
+          .addFields(
+            { name: "Surface", value: "prefix", inline: true },
+            { name: "Command", value: label, inline: true },
+            { name: "Detail", value: `\`\`\`${errorDetail(error)}\`\`\``, inline: false },
+          ),
+      ).catch(() => null);
+    }
     return;
   }
 

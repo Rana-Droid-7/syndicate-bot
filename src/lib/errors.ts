@@ -36,3 +36,34 @@ export class CooldownError extends BotError {
     super(message);
   }
 }
+
+/** A user-facing error mapped from the taxonomy above. */
+export interface MappedErrorReply {
+  /** Embed description text (already styled, no internals). */
+  description: string;
+  /** Correct usage line, if the error carries one. */
+  usage?: string;
+  /** True when the error should ALSO reach the dev-log channel. */
+  notifyDeveloper: boolean;
+}
+
+/** Storage-layer failures get this user text; never the raw SQL. */
+export const DB_ERROR_USER_TEXT =
+  "Something's wrong with my storage — the developer has been notified. Try again in a moment.";
+
+/**
+ * Maps a thrown error to its user-facing reply + devlog policy.
+ * Shared by BOTH dispatchers (slash + prefix) so a new error type
+ * or message tweak can never drift between them. Returns null for
+ * unknown/unexpected errors — the caller logs those with full
+ * detail and shows the generic message itself.
+ */
+export function mapErrorToReply(error: unknown): MappedErrorReply | null {
+  if (error instanceof CooldownError) return { description: error.message, notifyDeveloper: false };
+  if (error instanceof UserInputError) return { description: error.message, usage: error.usage, notifyDeveloper: false };
+  if (error instanceof PermissionError) return { description: error.message, notifyDeveloper: false };
+  if (error instanceof ContextError) return { description: error.message, notifyDeveloper: false };
+  if (error instanceof DatabaseError) return { description: DB_ERROR_USER_TEXT, notifyDeveloper: true };
+  if (error instanceof BotError) return { description: error.message, notifyDeveloper: false };
+  return null;
+}

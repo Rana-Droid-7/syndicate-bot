@@ -8,6 +8,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { canModerate } from "../../lib/permissions.js";
 import { confirmAction } from "../../lib/confirm.js";
+import { safeErrorText } from "../../lib/safeError.js";
 import { log } from "../../core/logger.js";
 
 const command: Command = {
@@ -70,11 +71,11 @@ const command: Command = {
           reason,
           deleteMessageSeconds: deleteDays * 86400,
         });
-        log.info("MOD", `/ban SUCCESS (by-ID): ${actor.id} banned ${targetUser.id} in guild ${interaction.guild.id}. Reason: ${reason}`);
+        log.info("MOD", `/ban (by-ID) SUCCESS: ${interaction.user.id} banned ${targetUser.id} in guild ${interaction.guild.id}. Reason: ${reason}`);
       } catch (error) {
         log.error("MOD", `/ban (by-ID) FAILED for target ${targetUser.id}`, error);
         await interaction.followUp({
-          embeds: [errorEmbed(`The ban failed: ${error instanceof Error ? error.message : "unknown error"}. Nothing was changed.`)],
+          embeds: [errorEmbed(`The ban failed: ${safeErrorText(error)}. Nothing was changed.`)],
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -111,10 +112,19 @@ const command: Command = {
       return;
     }
 
-    // Re-validate against fresh data — see kick.ts for why.
+    // Re-validate against fresh data — see kick.ts for why. Both the
+    // target AND the actor/bot hierarchy are re-fetched: a demoted
+    // invoker or a moved bot role during the dialog must not act on
+    // stale authority.
     const freshTarget = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-    if (freshTarget) {
-      const freshCheck = canModerate(actor, freshTarget, botMember);
+    const freshActor = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    const freshBot = await interaction.guild.members.fetchMe().catch(() => null);
+    if (freshTarget && (!freshActor || !freshBot)) {
+      await interaction.followUp({ content: "Couldn't re-verify your membership or my own — nothing was done.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    if (freshTarget && freshActor && freshBot) {
+      const freshCheck = canModerate(freshActor, freshTarget, freshBot);
       if (!freshCheck.ok) {
         log.warn("MOD", `/ban: re-check after confirmation failed for target ${targetUser.id}: ${freshCheck.reason}`);
         await interaction.followUp({ content: `Can't proceed — things changed while this was being confirmed: ${freshCheck.reason}`, flags: MessageFlags.Ephemeral });
@@ -127,11 +137,11 @@ const command: Command = {
 
     try {
       await interaction.guild.members.ban(targetUser.id, { reason, deleteMessageSeconds: deleteDays * 86400 });
-      log.info("MOD", `/ban SUCCESS: ${actor.id} banned ${targetUser.id} in guild ${interaction.guild.id}. Reason: ${reason}`);
+      log.info("MOD", `/ban SUCCESS: ${interaction.user.id} banned ${targetUser.id} in guild ${interaction.guild.id}. Reason: ${reason}`);
     } catch (error) {
       log.error("MOD", `/ban FAILED for target ${targetUser.id}`, error);
       await interaction.followUp({
-        embeds: [errorEmbed(`The ban failed: ${error instanceof Error ? error.message : "unknown error"}. Nothing was changed.`)],
+        embeds: [errorEmbed(`The ban failed: ${safeErrorText(error)}. Nothing was changed.`)],
         flags: MessageFlags.Ephemeral,
       });
       return;

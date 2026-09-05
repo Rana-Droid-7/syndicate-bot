@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
+import { mentionToId, isSnowflake } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
 async function replyWithBanner(
@@ -65,8 +66,8 @@ const command: Command = {
       return;
     }
 
-    const targetId = mentioned?.id ?? rawArg!.replace(/[<@!>]/g, "");
-    if (!/^\d{15,20}$/.test(targetId)) {
+    const targetId = mentioned?.id ?? mentionToId(rawArg!);
+    if (!isSnowflake(targetId)) {
       await message.reply(`\`${rawArg}\` doesn't look like a valid user mention or ID.`);
       return;
     }

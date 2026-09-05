@@ -15,6 +15,33 @@ interface ReleaseNotes {
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
   {
+    version: "0.5.2-beta",
+    date: "2026-09-05",
+    highlights: [
+      "**Security hardening**: every log surface censors token-shaped secrets; error embeds show clean reasons, never internals",
+      "**Moderation re-checks EVERYTHING after confirm** — an invoker demoted or bot role moved during the dialog no longer slips through",
+      "**`/calculate` memory bombs dead** — the math worker runs with hard heap limits",
+      "**New game: `>rps`** — rock-paper-scissors, instant on prefix, clickable button duel on slash (only your clicks count)",
+      "One shared error mapper for both dispatchers — database failures now reach the developer log on every surface",
+      "Gateway hiccups can't crash the bot anymore",
+      "CI on GitHub and GitLab, a `npm run verify` one-shot, LICENSE, issue templates — the full repo treatment",
+    ],
+  },
+  {
+    version: "0.5.1-beta",
+    date: "2026-09-05",
+    highlights: [
+      "**Poll fix**: polls running over 15 minutes now close properly (interaction tokens expire — the final edit goes through the bot token instead)",
+      "**Crash fix**: mention-heavy `>suggest`/`>joke` input no longer trips the database limit (sanitize-then-truncate everywhere)",
+      "**Reminders can't double-ping**: timer and safety-sweep deliveries are deduped per reminder",
+      "**`>afk off to lunch`** sets the reason instead of clearing AFK",
+      "AFK mention notices cap at 10 per message — a mass-mention can't overflow the embed anymore",
+      "`/boot` panel restarts flush the log mirror; Ctrl+C during startup cleans up too",
+      "Leaving a server now prunes orphaned rows; `>choose` rejects 11+ options loudly",
+      "15 bugs fixed in total, all regression-tested — see CHANGELOG.md for the rest",
+    ],
+  },
+  {
     version: "0.5.0-beta",
     date: "2026-09-04",
     highlights: [

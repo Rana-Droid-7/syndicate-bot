@@ -9,6 +9,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed, successEmbed } from "../../lib/embeds.js";
 import { confirmAction } from "../../lib/confirm.js";
 import { log } from "../../core/logger.js";
+import { safeErrorText } from "../../lib/safeError.js";
 
 const command: Command = {
   category: "moderation",
@@ -81,7 +82,7 @@ const command: Command = {
     } catch (error) {
       log.error("MOD", `/purge FAILED in channel ${channel.id}`, error);
       await interaction.followUp({
-        embeds: [errorEmbed(`The purge failed: ${error instanceof Error ? error.message : "unknown error"}.`)],
+        embeds: [errorEmbed(`The purge failed: ${safeErrorText(error)}.`)],
         flags: MessageFlags.Ephemeral,
       });
     }

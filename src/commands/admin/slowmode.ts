@@ -9,6 +9,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed, successEmbed } from "../../lib/embeds.js";
 import { isAdmin } from "../../lib/permissions.js";
 import { log } from "../../core/logger.js";
+import { safeErrorText } from "../../lib/safeError.js";
 
 const MAX_SLOWMODE_SECONDS = 21600; // Discord's own cap: 6 hours
 
@@ -62,7 +63,7 @@ const command: Command = {
     } catch (error) {
       log.error("ADMIN", `/slowmode FAILED on channel ${channelId}`, error);
       await interaction.reply({
-        embeds: [errorEmbed(`Couldn't set slowmode there: ${error instanceof Error ? error.message : "unknown error"}. Check that I have Manage Channels permission.`)],
+        embeds: [errorEmbed(`Couldn't set slowmode there: ${safeErrorText(error)}. Check that I have Manage Channels permission.`)],
         flags: MessageFlags.Ephemeral,
       });
       return;

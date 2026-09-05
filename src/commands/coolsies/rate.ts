@@ -2,6 +2,7 @@ import { SlashCommandBuilder, MessageFlags, type ChatInputCommandInteraction, ty
 import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
+import { mentionToId, isSnowflake } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
 /** Rates out of 10 — biased slightly toward kindness at the bottom end. */
@@ -45,8 +46,8 @@ const command: Command = {
 
     const mentioned = message.mentions.users.first();
     if (!mentioned && args[0]) {
-      const bare = args[0].replace(/[<@!>]/g, "");
-      if (!/^\d{15,20}$/.test(bare)) {
+      const bare = mentionToId(args[0]);
+      if (!isSnowflake(bare)) {
         await message.reply({
           embeds: [errorEmbed(`\`${args[0]}\` doesn't look like a valid user mention or ID.`)],
         });

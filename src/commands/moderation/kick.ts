@@ -8,6 +8,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { canModerate } from "../../lib/permissions.js";
 import { confirmAction } from "../../lib/confirm.js";
+import { safeErrorText } from "../../lib/safeError.js";
 import { log } from "../../core/logger.js";
 
 const command: Command = {
@@ -64,17 +65,25 @@ const command: Command = {
       return;
     }
 
-    // Target data was fetched BEFORE the (up to 30-second) confirm
-    // wait. Re-fetch and re-validate now, right before acting, so
-    // we don't act on stale state (target left, roles changed,
-    // etc during the wait).
+    // Target AND hierarchy data were fetched BEFORE the (up to
+    // 30-second) confirm wait. Re-fetch everything right before
+    // acting: the target may have left, and the ACTOR's roles / the
+    // BOT's role position may have changed while the dialog sat
+    // open (demoted invoker, moved bot role) — re-checking against
+    // stale pre-dialog data would act on expired authority.
     const freshTarget = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
     if (!freshTarget) {
       log.warn("MOD", `/kick: target ${targetUser.id} no longer in guild after confirmation.`);
       await interaction.followUp({ content: "That member left the server while this was being confirmed — nothing to kick.", flags: MessageFlags.Ephemeral });
       return;
     }
-    const freshCheck = canModerate(actor, freshTarget, botMember);
+    const freshActor = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    const freshBot = await interaction.guild.members.fetchMe().catch(() => null);
+    if (!freshActor || !freshBot) {
+      await interaction.followUp({ content: "Couldn't re-verify your membership or my own — nothing was done.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const freshCheck = canModerate(freshActor, freshTarget, freshBot);
     if (!freshCheck.ok) {
       log.warn("MOD", `/kick: re-check after confirmation failed for target ${targetUser.id}: ${freshCheck.reason}`);
       await interaction.followUp({ content: `Can't proceed — things changed while this was being confirmed: ${freshCheck.reason}`, flags: MessageFlags.Ephemeral });
@@ -83,11 +92,11 @@ const command: Command = {
 
     try {
       await freshTarget.kick(reason);
-      log.info("MOD", `/kick SUCCESS: ${actor.id} kicked ${freshTarget.id} in guild ${interaction.guild.id}. Reason: ${reason}`);
+      log.info("MOD", `/kick SUCCESS: ${freshActor.id} kicked ${freshTarget.id} in guild ${interaction.guild.id}. Reason: ${reason}`);
     } catch (error) {
       log.error("MOD", `/kick FAILED for target ${freshTarget.id}`, error);
       await interaction.followUp({
-        embeds: [errorEmbed(`The kick failed: ${error instanceof Error ? error.message : "unknown error"}. Nothing was changed.`)],
+        embeds: [errorEmbed(`The kick failed: ${safeErrorText(error)}. Nothing was changed.`)],
         flags: MessageFlags.Ephemeral,
       });
       return;

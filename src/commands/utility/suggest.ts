@@ -2,11 +2,20 @@ import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed, successEmbed } from "../../lib/embeds.js";
 import { ContextError, UserInputError } from "../../lib/errors.js";
-import { sanitizeSuggestion } from "./suggest-utils.js";
+import { truncate, sanitizeEcho } from "../../lib/validation.js";
 import { suggestionService } from "../../services/suggestions.js";
 import { log } from "../../core/logger.js";
 
 const MAX_LENGTH = 500;
+
+/**
+ * Suggestion-specific sanitization: echo-safety (mass mentions,
+ * invisible characters) plus newline collapsing so the export file
+ * stays one-line-per-entry.
+ */
+function sanitizeSuggestion(text: string): string {
+  return sanitizeEcho(text).replace(/\r?\n+/g, " ").trim();
+}
 
 const command: Command = {
   category: "utility",
@@ -29,7 +38,12 @@ const command: Command = {
     if (content.length > MAX_LENGTH) {
       throw new UserInputError(`Suggestions cap at ${MAX_LENGTH} characters.`);
     }
-    const safe = sanitizeSuggestion(content);
+    // Sanitize FIRST, truncate AFTER — sanitizeEcho EXPANDS text (each
+    // @everyone/@here gains a zero-width mention-breaker), so slicing
+    // the raw input first could let the sanitized result exceed the
+    // DB CHECK (<= 500) and crash the insert. Mirrors remindme's
+    // escape-then-truncate pattern.
+    const safe = truncate(sanitizeSuggestion(content), MAX_LENGTH);
     if (!safe) throw new UserInputError("Your suggestion can't be empty.");
 
     const id = await suggestionService.add(

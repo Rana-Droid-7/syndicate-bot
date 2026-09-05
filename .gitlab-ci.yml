@@ -1,0 +1,21 @@
+# GitLab CI — same verification loop as the GitHub workflow.
+
+stages:
+  - verify
+
+verify:
+  stage: verify
+  image: node:20
+  cache:
+    key: npm
+    paths:
+      - .npm/
+  script:
+    - npm ci --cache .npm
+    - npx tsc --noEmit
+    - npm run build
+    - node --test --test-reporter=spec dist/tests/unit.test.js
+    - node verify_timer.mjs
+    - node verify_lookup.mjs
+    - node verify-dispatcher.mjs
+    - node verify-integration.mjs

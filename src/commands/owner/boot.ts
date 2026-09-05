@@ -13,6 +13,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed, successEmbed, warnEmbed } from "../../lib/embeds.js";
 import { isDeveloper } from "../../lib/permissions.js";
 import { announceOffline } from "../../lib/devlog.js";
+import { flushLogSink } from "../../core/logSink.js";
 import { closeDb } from "../../database/client.js";
 import { reminderService } from "../../services/reminders.js";
 import { log } from "../../core/logger.js";
@@ -176,6 +177,11 @@ const command: Command = {
 
       log.info("SHUTDOWN", `${action} confirmed by ${interaction.user.id} — destroying client and exiting.`);
       reminderService.beginShutdown();
+      // Drain queued verbose-log lines while the connection is still
+      // alive — the signal-based shutdown path (index.ts) does this;
+      // skipping it here silently dropped the last batch on every
+      // panel-driven reboot/shutdown.
+      await flushLogSink().catch(() => null);
       await interaction.client.destroy().catch(() => null);
       closeDb();
       process.exit(action === "Reboot" ? 1 : 0);

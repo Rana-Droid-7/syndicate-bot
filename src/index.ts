@@ -5,6 +5,7 @@ import { config } from "./core/config.js";
 import { log } from "./core/logger.js";
 import { announceOffline, sendDevLog } from "./lib/devlog.js";
 import { baseEmbed } from "./lib/embeds.js";
+import { errorDetail } from "./lib/safeError.js";
 import { flushLogSink, initLogSink } from "./core/logSink.js";
 import { closeDb, getDb, runMigrations } from "./database/client.js";
 import { reminderService } from "./services/reminders.js";
@@ -40,18 +41,22 @@ process.on("uncaughtException", (error) => {
 
   // Async cleanup — but the exit must not be held hostage by a hung
   // Discord connection either, so race it against a 5s deadline.
+  // Ordering mirrors the graceful shutdown path: reminder timers
+  // stand down, the log sink drains while the connection is alive,
+  // Discord disconnects, and the DB closes LAST so in-flight
+  // deliveries can't race the close.
   const cleanup = (async () => {
     await sendDevLog(
       client,
       baseEmbed()
         .setTitle("💥 Uncaught Exception — Shutting Down")
-        .setDescription(`A process manager (PM2, systemd, Docker) should restart the bot.\n\n\`\`\`${String(error).slice(0, 1000)}\`\`\``),
+        .setDescription(`A process manager (PM2, systemd, Docker) should restart the bot.\n\n\`\`\`${errorDetail(error)}\`\`\``),
     ).catch(() => null); // never let the devlog attempt block or crash the exit path
     await announceOffline(client, "Uncaught exception (crash)", null).catch(() => null);
     reminderService.beginShutdown();
     await flushLogSink().catch(() => null);
-    closeDb();
     await client.destroy().catch(() => null);
+    closeDb();
   })();
 
   const deadline = setTimeout(() => {
@@ -93,34 +98,15 @@ async function main() {
   globalThis.__syndicateClient = client;
   log.debug("BOOT", "Client instance created.");
 
-  log.info("BOOT", "Loading commands...");
-  await loadCommands(client);
-
-  log.info("BOOT", "Loading events...");
-  await loadEvents(client);
-
-  log.info("BOOT", "Logging in to Discord...");
-  await client.login(config.token);
-  log.info("BOOT", "Login call completed — waiting for 'ready' event.");
-
-  // Wire the verbose mirror feed to the private logs channel. From
-  // this point on, every mirrored log line (command dispatches,
-  // permission decisions, AFK changes, ...) flows there in batches.
-  if (config.botLogChannelId) {
-    initLogSink(client, config.botLogChannelId);
-    log.info("BOOT", "Private bot-logs mirror armed.");
-  }
-
-  // Restore persisted reminders + start the overdue sweep safety net.
-  const restored = reminderService.restore(client);
-  reminderService.startSweep(client);
-  if (restored > 0) log.info("BOOT", `Reminder subsystem online (${restored} pending).`);
-
-  // Warm the in-memory AFK index from the database so the per-message
-  // hot path never needs a SELECT before the first set/clear.
-  warmAfkIndex();
-
+  // ---- signal handling: registered BEFORE the slow boot steps ----
+  // Command loading, Discord login, and reminder restore can each
+  // take seconds; Ctrl+C during any of them previously fell through
+  // to default SIGINT behavior (hard exit) with zero cleanup.
+  let signalShutdownStarted = false;
   const shutdown = async (signal: string) => {
+    if (signalShutdownStarted) return; // second signal during shutdown — ignore
+    signalShutdownStarted = true;
+
     log.info("SHUTDOWN", `Received ${signal}, disconnecting cleanly...`);
     // Announce "going offline" to the dev-log channel BEFORE the
     // connection drops, so the message actually gets delivered.
@@ -155,6 +141,33 @@ async function main() {
       process.exit(1);
     });
   });
+
+  log.info("BOOT", "Loading commands...");
+  await loadCommands(client);
+
+  log.info("BOOT", "Loading events...");
+  await loadEvents(client);
+
+  log.info("BOOT", "Logging in to Discord...");
+  await client.login(config.token);
+  log.info("BOOT", "Login call completed — waiting for 'ready' event.");
+
+  // Wire the verbose mirror feed to the private logs channel. From
+  // this point on, every mirrored log line (command dispatches,
+  // permission decisions, AFK changes, ...) flows there in batches.
+  if (config.botLogChannelId) {
+    initLogSink(client, config.botLogChannelId);
+    log.info("BOOT", "Private bot-logs mirror armed.");
+  }
+
+  // Restore persisted reminders + start the overdue sweep safety net.
+  const restored = reminderService.restore(client);
+  reminderService.startSweep(client);
+  if (restored > 0) log.info("BOOT", `Reminder subsystem online (${restored} pending).`);
+
+  // Warm the in-memory AFK index from the database so the per-message
+  // hot path never needs a SELECT before the first set/clear.
+  warmAfkIndex();
 }
 
 main().catch((error) => {

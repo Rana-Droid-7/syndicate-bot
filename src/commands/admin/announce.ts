@@ -9,6 +9,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed, successEmbed } from "../../lib/embeds.js";
 import { isAdmin } from "../../lib/permissions.js";
 import { log } from "../../core/logger.js";
+import { safeErrorText } from "../../lib/safeError.js";
 
 const command: Command = {
   category: "admin",
@@ -59,7 +60,7 @@ const command: Command = {
     } catch (error) {
       log.error("ADMIN", `/announce FAILED posting to channel ${channel.id}`, error);
       await interaction.reply({
-        embeds: [errorEmbed(`Couldn't post there: ${error instanceof Error ? error.message : "unknown error"}. Check that I have permission to send messages in that channel.`)],
+        embeds: [errorEmbed(`Couldn't post there: ${safeErrorText(error)}. Check that I have permission to send messages in that channel.`)],
         flags: MessageFlags.Ephemeral,
       });
       return;

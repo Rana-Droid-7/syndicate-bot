@@ -32,5 +32,14 @@ export class SyndicateClient extends Client {
       ],
       partials: [Partials.Message, Partials.Channel],
     });
+
+    // Client is an EventEmitter: an 'error' event with no listener
+    // takes the whole process down (Node's throw-on-unhandled-'error'
+    // rule) — a transient gateway hiccup must never do that. The
+    // sweep/restore safety nets re-deliver anything missed during a
+    // brief disconnect anyway.
+    this.on("error", (error) => {
+      console.error(`[${new Date().toISOString()}] [ERROR] [EVENT] Gateway/client error (process continues):`, error);
+    });
   }
 }

@@ -3,6 +3,7 @@ import type { BotEvent } from "../handlers/eventHandler.js";
 import { baseEmbed } from "../lib/embeds.js";
 import { sendDevLog } from "../lib/devlog.js";
 import { guildRepository } from "../repositories/guilds.js";
+import { pruneOrphanedUsers } from "../repositories/shared.js";
 import { afkService } from "../services/afk.js";
 import { log } from "../core/logger.js";
 
@@ -16,8 +17,13 @@ const event: BotEvent<"guildDelete"> = {
     // in-memory reminder timers for it fail their delivery gracefully
     // (channel is gone anyway).
     let removed = 0;
+    let prunedUsers = 0;
     try {
       removed = guildRepository.remove(guild.id);
+      // The cascades orphan the departed guild's `users` rows (nothing
+      // references them anymore) — sweep those too so the table
+      // doesn't grow without bound across months of joins/leaves.
+      prunedUsers = pruneOrphanedUsers();
       // The in-memory AFK index must not keep stale members of a gone
       // guild — a re-join + immediate mention must not hit the notice
       // path with no backing row.
@@ -26,7 +32,10 @@ const event: BotEvent<"guildDelete"> = {
       log.error("EVENT", `Failed to clean data for guild ${guild.id}`, error);
     }
 
-    log.info("EVENT", `Cleanup for guild ${guild.id}: ${removed > 0 ? "guild row + cascades removed" : "no data existed"}.`);
+    log.info(
+      "EVENT",
+      `Cleanup for guild ${guild.id}: ${removed > 0 ? "guild row + cascades removed" : "no data existed"}${prunedUsers > 0 ? `, ${prunedUsers} orphaned user row(s) pruned` : ""}.`,
+    );
 
     await sendDevLog(
       guild.client,

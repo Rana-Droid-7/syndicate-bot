@@ -90,7 +90,7 @@ const command: Command = {
               { name: "Total Warnings", value: `${count}`, inline: true },
               { name: "Reason", value: reason, inline: false },
             )
-            .setFooter({ text: "Warnings are in-memory in this beta — lost if the bot restarts." }),
+            .setFooter({ text: "Warnings are persistent — they survive restarts." }),
         ],
       });
       return;

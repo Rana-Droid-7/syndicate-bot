@@ -9,7 +9,9 @@ import type { Database as SqliteDatabase } from "better-sqlite3";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // dist/database/client.js -> project root is ../../; src/database/client.ts -> ../../
 const projectRoot = path.resolve(__dirname, "..", "..");
-export const DB_PATH = path.join(projectRoot, config.databaseFile);
+// Resolve relative DATABASE_FILE values against the project root so
+// "data/x.db" works from any CWD and absolute paths pass through.
+export const DB_PATH = path.resolve(projectRoot, config.databaseFile);
 
 let db: SqliteDatabase | null = null;
 

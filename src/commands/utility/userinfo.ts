@@ -8,6 +8,7 @@ import { MessageFlags,
 } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
+import { mentionToId, isSnowflake } from "../../lib/validation.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
 
@@ -164,14 +165,14 @@ const command: Command = {
     // isn't a mention or a plain ID gets a clear message, not a
     // generic "couldn't find that member".
     if (args.length > 0 && !message.mentions.users.size) {
-      const candidate = args[0].replace(/[<@!>]/g, "");
-      if (!/^\d{15,20}$/.test(candidate)) {
+      const candidate = mentionToId(args[0]);
+      if (!isSnowflake(candidate)) {
         await message.reply(`\`${args[0]}\` doesn't look like a valid user mention or ID.`);
         return;
       }
     }
 
-    const targetId = message.mentions.users.first()?.id ?? args[0]?.replace(/[<@!>]/g, "") ?? message.author.id;
+    const targetId = message.mentions.users.first()?.id ?? (args[0] ? mentionToId(args[0]) : message.author.id);
     log.info("PREFIX", `>userinfo invoked by ${message.author.tag} (${message.author.id}) for target ${targetId}`);
     const member = await message.guild.members.fetch(targetId).catch(() => null);
 

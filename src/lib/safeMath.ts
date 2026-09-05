@@ -84,6 +84,11 @@ export async function safeEvaluate(expression: string): Promise<SafeEvalResult> 
 
       worker = new Worker(url, {
         workerData: { expression },
+        // Belt-and-suspenders next to the 3s kill: memory bombs
+        // (huge matrix/range literals) can OOM the process before
+        // any timeout fires. A hard heap ceiling makes the worker
+        // crash on allocation instead — surfaced as 'error' below.
+        resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 32 },
         ...(isTypeScript ? { execArgv: ["--import", "tsx"] } : {}),
       });
     } catch (error) {

@@ -6,6 +6,7 @@ import type { ClientEvents } from "discord.js";
 import { log } from "../core/logger.js";
 import { sendDevLog } from "../lib/devlog.js";
 import { baseEmbed } from "../lib/embeds.js";
+import { errorDetail } from "../lib/safeError.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const eventsRoot = path.join(__dirname, "..", "events");
@@ -33,11 +34,9 @@ export async function loadEvents(client: SyndicateClient): Promise<void> {
     }
 
     // Every event handler is wrapped uniformly here — individual
-    // event files don't need their own try/catch. This is the
-    // centralized fix for a gap where errors in event handlers
-    // (as opposed to command execution, which was already
-    // well-handled) previously only produced a contextless global
-    // console log with no devlog reporting.
+    // event files don't need their own try/catch. The wrapper logs
+    // with sanitized detail (see lib/safeError.ts) so nothing
+    // internal leaks into log channels.
     const wrapped = async (...args: unknown[]) => {
       try {
         log.debug("EVENT", `Firing "${String(event.name)}"...`);
@@ -51,7 +50,7 @@ export async function loadEvents(client: SyndicateClient): Promise<void> {
             .setTitle("⚠️ Event Handler Error")
             .addFields(
               { name: "Event", value: String(event.name), inline: true },
-              { name: "Error", value: `\`\`\`${String(error).slice(0, 1000)}\`\`\``, inline: false },
+              { name: "Error", value: `\`\`\`${errorDetail(error)}\`\`\``, inline: false },
             ),
         ).catch((devlogError) => log.error("EVENT", "Failed to send devlog for event error", devlogError));
       }

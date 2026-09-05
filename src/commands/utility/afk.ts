@@ -22,7 +22,11 @@ const command: Command = {
     const first = (args[0] ?? "").toLowerCase();
 
     // Explicit off — no more "send any message to clear" requirement.
-    if (first === "off" || first === "clear") {
+    // "off"/"clear" is only an intent when it's the WHOLE argument:
+    // ">afk off to lunch" is a reason, not a toggle (the old
+    // single-token check silently cleared AFK instead of setting
+    // that perfectly plausible reason).
+    if (args.length === 1 && (first === "off" || first === "clear")) {
       const cleared = afkService.clear(guildId, message.author.id);
       if (!cleared) {
         await message.reply({ embeds: [errorEmbed("You weren't AFK in this server.")] });

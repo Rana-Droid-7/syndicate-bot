@@ -56,7 +56,10 @@ const command: Command = {
 };
 
 function validateOptions(raw: string[]): string[] {
-  const options = raw.map((o) => o.trim()).filter(Boolean).slice(0, MAX_OPTIONS);
+  if (raw.length > MAX_OPTIONS) {
+    throw new UserInputError(`That's ${raw.length} options — the cap is ${MAX_OPTIONS}. Drop the extras and try again.`);
+  }
+  const options = raw.map((o) => o.trim()).filter(Boolean);
   if (options.length < 2) {
     throw new UserInputError("Give me at least 2 options to choose between — `>choose pizza pasta`.", ">choose <option1> <option2> [more...]");
   }

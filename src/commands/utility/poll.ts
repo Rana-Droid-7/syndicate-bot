@@ -113,9 +113,21 @@ const command: Command = {
       withResponse: true,
     });
 
-    const collector = response.resource!.message!.createMessageComponentCollector({
+    // The poll message itself — finalized via message.edit() (bot
+    // token), NOT interaction.editReply(): interaction tokens
+    // expire after 15 minutes, and polls can run up to 60, which
+    // would strand the closing edit and leave live buttons on a
+    // dead poll.
+    const message = response.resource!.message!;
+
+    const collector = message.createMessageComponentCollector({
       componentType: ComponentType.Button,
       time: durationMs,
+      // Polls are public by design — anyone may vote — but a filter
+      // still guards the collector itself from garbage interactions
+      // (bot-initiated component events can never exist; this stays
+      // open for all human voters).
+      filter: (i) => !i.user.bot,
     });
 
     // Votes are applied to the `votes` Map synchronously and always
@@ -150,13 +162,15 @@ const command: Command = {
         ),
       );
       // Chain through the SAME serialization as the vote updates —
-      // otherwise a final editReply racing the last in-flight vote
-      // update could land first and leave the poll showing the live
-      // "Vote below" footer forever, with the vote's update wiping
-      // the closed state afterward.
+      // otherwise a final edit racing the last in-flight vote update
+      // could land first and leave the poll showing the live "Vote
+      // below" footer forever, with the vote's update wiping the
+      // closed state afterward. Uses message.edit() (bot token, no
+      // expiry) — interaction tokens die after 15 minutes and polls
+      // run up to 60.
       updateChain = updateChain
         .then(async () => {
-          await interaction.editReply({
+          await message.edit({
             embeds: [buildResultsEmbed(question, options, votes, true, endUnix)],
             components: disabledRows,
           });

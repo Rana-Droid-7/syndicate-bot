@@ -2,6 +2,62 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `>changelog` — it shows the most recent releases from this same history.
 
+## v0.5.2-beta — 2026-09-05 (hardening + repo round)
+
+Security, consistency, and repository polish. No behavior regressions — the full verification loop (build, typecheck, 33+ unit tests, 4 harnesses) passes.
+
+### Security / hardening
+- **Shared error mapper** (`lib/errors.ts` → `mapErrorToReply`): both dispatchers (slash + prefix) now map the taxonomy through one function — a new error type or message tweak can never drift between surfaces, and `DatabaseError` now devlogs on BOTH surfaces (the slash path previously swallowed it).
+- **Info-leak hardening across every log surface**: new `lib/safeError.ts` — `errorDetail()` (censored, fence-safe, capped) replaces every raw `String(error)` in devlogs, the event-handler wrapper, and the crash embed. The private log mirror sanitizes control characters and censors token-shaped secrets before a line ever queues.
+- **User-facing failure embeds** (kick/ban/timeout/purge/announce/slowmode) now use `safeErrorText()` — short API reason only, never raw internals.
+- **Moderation TOCTOU closed**: kick/ban/timeout re-fetch the ACTOR and the BOT MEMBER (not just the target) after the confirmation wait — an invoker demoted or a bot role moved during the 30s dialog no longer acts on stale authority.
+- **`/calculate` memory bombs**: the math worker now runs with hard heap limits (128 MB old-gen) — huge-matrix payloads crash the worker (surfaced as a clean error) instead of OOMing the whole process before the 3s kill fires.
+- **Gateway crash guard**: the client installs an `error` listener — a transient WS/gateway error can no longer take the process down (Node throws on unhandled `error` events).
+- **`/rps` buttons**: only the invoker's clicks count, enforced in the async collector *filter* (rejections never consume the `max:1` slot — a stranger's click can't lock the invoker out).
+- **Dispatch log cap**: prefix dispatch logs cap at 8 args / 300 chars — a pasted wall of text no longer dumps into the log mirror.
+
+### Consistency
+- `>avatar`, `>banner`, `>userinfo`, `>rate` all use the shared `mentionToId`/`isSnowflake` validators (four hand-rolled copies removed).
+- `suggest-utils.ts` merged into `suggest.ts` (single-consumer helper file gone).
+- `DatabaseError` handling identical on both surfaces (via the shared mapper).
+
+### Infrastructure / repo
+- **`npm run verify`** — one command runs the whole verification loop (typecheck, build, unit tests, 4 harnesses).
+- **CI for GitHub and GitLab** (`.github/workflows/ci.yml`, `.gitlab-ci.yml`) — same loop on every push/PR, no credentials needed.
+- **`LICENSE.md`** — private, not-for-public-use license (no distribution, no public hosting, warranty disclaimer).
+- **`.editorconfig`**, GitHub issue templates (bug + feature).
+- `DATABASE_FILE` resolves against the project root — any CWD works.
+- **README** updated: real command inventory (rps included), `safeError` in the lib list, `npm run verify`, license pointer.
+
+### New
+- **`>rps` / `/rps`** — rock-paper-scissors: instant on the prefix, clickable button duel on slash with invoker-only buttons.
+
+## v0.5.1-beta — 2026-09-05 (bug-hunt round 2)
+
+Fifteen bugs found by a full-codebase audit, all fixed and regression-tested (33 unit tests + 101 integration checks).
+
+### Fixed
+- **`/poll` stranded above 15 minutes** — the closing edit used `interaction.editReply()`, but interaction tokens expire after 15 minutes, so any poll running 16–60 minutes never showed results and kept live buttons on a dead poll. Finalization now edits via the message object (bot token, no expiry).
+- **`>suggest` / `>joke add` / `>joke edit` could crash on mention-heavy input** — the length check ran before sanitization, but sanitization EXPANDS text (a zero-width mention-breaker per `@here`/`@everyone`); ~83 mentions passed the check, expanded past the DB CHECK constraint, and the insert threw. Sanitize-then-truncate everywhere now, matching the reminder pipeline's proven pattern.
+- **Reminders could double-deliver** — the delivery path marked the row delivered only after the network send completed, so the 60s safety sweep could re-select a still-pending row mid-send and ping the user twice. A synchronous in-flight guard now dedupes timer vs. sweep attempts per reminder.
+- **`>afk off to lunch` cleared AFK instead of setting the reason** — "off"/"clear" is only an intent when it's the whole argument now.
+- **`/warn add` footer claimed warnings were in-memory and lost on restart** — false since v0.5.0's SQLite migration; the footer now states they're persistent.
+- **AFK mention notices could overflow the embed** — a message mentioning many long-reason AFK members exceeded the 4096-char description limit and the whole notice was lost. Notices are capped (10 per message, 3500-char budget) with an "…and N more" line.
+- **`/boot` panel reboots dropped the last log-mirror batch** — the panel's shutdown path skipped the log-sink flush the signal-based path performs.
+- **Crash cleanup closed the DB before disconnecting** — ordering now mirrors the graceful path (disconnect, then close storage).
+- **Ctrl+C during startup did no cleanup** — SIGINT/SIGTERM handlers are registered before the slow boot steps (command load, login) instead of after.
+- **`>choose` silently dropped options beyond 10** — now rejected with a clear error.
+- **`/8ball` accepted whitespace-only questions** — trimmed like the prefix path.
+- **`/ping` showed `-1ms` WebSocket latency before the first heartbeat** — renders "connecting…" honestly; the slash path no longer reports a bogus ~0ms roundtrip when the ack payload carries no timestamp.
+- **Reminder timers kept test harnesses alive for minutes** — reminder timers are unref'd (the Discord connection, not a pending reminder, keeps the live process running).
+
+### Changed
+- **Leaving a server now prunes orphaned user rows** — FK cascades delete the guild's data but previously left the parent `users` rows behind forever; `guildDelete` now sweeps them.
+- **Dead code removed** — `lib/usage.ts` (unused), duplicate `escapeMarkdownBold` in `format.ts`, unused `parseQuotedArgs` rest field, `reminders.pendingForUser`, `suggestions.setStatus`, `guildRepository.ensure`, and calculate's local code-block sanitizer (now shared).
+
+### Tests
+- 5 new unit regression tests (mention-expansion limits, afk-off parsing, choose cap, in-flight dedup semantics) and 9 new integration checks against a throwaway DB — suite now 33 unit tests + 101 harness checks, all passing.
+
 ## v0.5.0-beta — 2026-09-04
 
 The engineering release: persistent storage, a new fun category, and the prefix-first interface.
@@ -13,7 +69,7 @@ The engineering release: persistent storage, a new fun category, and the prefix-
 - **Per-user, per-guild, per-command cooldowns** — synchronous check-and-set so simultaneous invocations can never both pass; entries sweep lazily.
 - **`>afk off`** — explicit clear, no more "send any message and hope".
 - **Quoted-argument parsing** for prefix commands — `>remindme "in 2 hours" stretch my legs` works, with backslash escaping and graceful fallback on broken quotes.
-- **Unit test suite** (`npm test`) — 23 tests: quoted parsing, duration parsing, validation bounds, markdown/mention sanitization, cooldown semantics, a 10,000-roll dice distribution check, and the suggestion engine. Two real production bugs (broken combined-duration parsing; a sanitization ordering bug that UN-DID the @everyone break) were caught by this suite on its first run.
+- **Unit test suite** (`npm test`) — 28 tests: quoted parsing, duration parsing, validation bounds, markdown/mention sanitization, cooldown semantics, a 10,000-roll dice distribution check, and the suggestion engine. Two real production bugs (broken combined-duration parsing; a sanitization ordering bug that UN-DID the @everyone break) were caught by this suite on its first run.
 
 ### Changed
 - **`>` is the primary interface.** Public commands live on the prefix; slash is reserved for moderation/admin/developer commands (structured input + native gating) and the handful of public commands where it genuinely helps (dice, coinflip, 8ball, choose, random, rate, jokes, help, ping, bot, invite, changelog, userinfo-family, roll, calculate, timestamp, snowflake, poll). `remindme`, `afk`, and `suggest` are prefix-only.

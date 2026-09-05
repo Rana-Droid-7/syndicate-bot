@@ -9,6 +9,7 @@ import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { canModerate } from "../../lib/permissions.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { confirmAction } from "../../lib/confirm.js";
+import { safeErrorText } from "../../lib/safeError.js";
 import { log } from "../../core/logger.js";
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's own cap: 28 days
@@ -105,7 +106,15 @@ const command: Command = {
       await interaction.followUp({ content: "That member left the server while this was being confirmed — nothing to time out.", flags: MessageFlags.Ephemeral });
       return;
     }
-    const freshCheck = canModerate(actor, freshTarget, botMember);
+    // Re-fetch actor + bot too — a demoted invoker or a moved bot
+    // role during the dialog must not act on stale authority.
+    const freshActor = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    const freshBot = await interaction.guild.members.fetchMe().catch(() => null);
+    if (!freshActor || !freshBot) {
+      await interaction.followUp({ content: "Couldn't re-verify your membership or my own — nothing was done.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const freshCheck = canModerate(freshActor, freshTarget, freshBot);
     if (!freshCheck.ok) {
       log.warn("MOD", `/timeout: re-check after confirmation failed for target ${targetUser.id}: ${freshCheck.reason}`);
       await interaction.followUp({ content: `Can't proceed — things changed while this was being confirmed: ${freshCheck.reason}`, flags: MessageFlags.Ephemeral });
@@ -118,11 +127,11 @@ const command: Command = {
       // Computed AFTER the action succeeds, not before, so the
       // expiry shown reflects when the timeout actually started.
       untilUnix = Math.floor((Date.now() + durationMs) / 1000);
-      log.info("MOD", `/timeout SUCCESS: ${actor.id} timed out ${freshTarget.id} for ${durationInput} in guild ${interaction.guild.id}. Reason: ${reason}`);
+      log.info("MOD", `/timeout SUCCESS: ${freshActor.id} timed out ${freshTarget.id} for ${durationInput} in guild ${interaction.guild.id}. Reason: ${reason}`);
     } catch (error) {
       log.error("MOD", `/timeout FAILED for target ${freshTarget.id}`, error);
       await interaction.followUp({
-        embeds: [errorEmbed(`The timeout failed: ${error instanceof Error ? error.message : "unknown error"}. Nothing was changed.`)],
+        embeds: [errorEmbed(`The timeout failed: ${safeErrorText(error)}. Nothing was changed.`)],
         flags: MessageFlags.Ephemeral,
       });
       return;

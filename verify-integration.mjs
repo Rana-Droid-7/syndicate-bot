@@ -308,7 +308,7 @@ console.log("\n=== COOLSIES ===");
     ['>choose "green curry" pizza', true, "multi-word option"],
     [">choose one", false, "single option"],
     [">choose", false, "no options"],
-    [`>choose ${Array.from({ length: 12 }, (_, i) => "o" + i).join(" ")}`, true, "12 options (capped at 10)"],
+    [`>choose ${Array.from({ length: 12 }, (_, i) => "o" + i).join(" ")}`, false, "12 options rejected (cap 10)"],
     [`>choose ${"x".repeat(200)}`, true, "200-char option"],
   ];
   for (const [input, ok, label] of cases) {
@@ -488,6 +488,95 @@ console.log("\n=== REGRESSIONS (audit fixes) ===");
   await cmd.prefixExecute(msg, ["123456789012345678"]);
   report("rate: unresolvable ID -> explicit error (not silent self-rate)",
     myReplies.length > 0 && !myReplies[0].includes("6666"), myReplies[0]?.slice(0, 80));
+}
+
+// ============================================================
+// REGRESSIONS for hunt round 2 (H2/M3/m9/m10 + suggest/joke expansion)
+// ============================================================
+console.log("\n=== REGRESSIONS (round 2) ===");
+{
+  const { getDb, closeDb: closeIt } = await import("./dist/database/client.js");
+  const uid = "666666666666666666";
+  const gid = "999999999999999999";
+
+  // --- H2: sanitizeEcho's @-mention expansion must never violate the
+  // suggestions CHECK (<=500). Raw "@here " * 83 = 495 chars passes the
+  // command's own length check, expands to ~578 on sanitize.
+  const S = "./dist/commands/utility/suggest.js";
+  const { suggestionRepository } = await import("./dist/repositories/suggestions.js");
+  const beforeCount = suggestionRepository.forGuild(gid).length;
+  const hostile = "@here ".repeat(83).trim();
+  let r = await runCommand(S, `>suggest "${hostile}"`, { authorId: uid });
+  const storedSug = suggestionRepository.forGuild(gid)[0];
+  report("suggest: @-expansion stored within 500 (no CHECK crash)",
+    r.ok && storedSug && storedSug.content.length <= 500,
+    r.ok ? `len=${storedSug?.content?.length}` : `threw: ${r.error?.message}`);
+  report("suggest: mention still broken after truncation",
+    r.ok && storedSug && !storedSug.content.includes("@here"));
+
+  // --- H2 (joke side): same attack via >joke add — the service-level
+  // sanitize-then-truncate must keep the insert legal.
+  const J = "./dist/commands/coolsies/joke.js";
+  const { jokeRepository } = await import("./dist/repositories/jokes.js");
+  const DEV = "111111111111111111";
+  r = await runCommand(J, `>joke add "${hostile}"`, { authorId: DEV });
+  const lastJoke = jokeRepository.list(1)[0];
+  report("joke: @-expansion stored within 500 (no CHECK crash)",
+    r.ok && lastJoke && lastJoke.content.length <= 500,
+    r.ok ? `len=${lastJoke?.content?.length}` : `threw: ${r.error?.message}`);
+  jokeRepository.remove(lastJoke.id);
+
+  // --- M3: ">afk off to lunch" sets the reason; lone ">afk off" clears.
+  const A = "./dist/commands/utility/afk.js";
+  const { afkRepository } = await import("./dist/repositories/afk.js");
+  r = await runCommand(A, ">afk off to lunch", { authorId: uid });
+  report("afk: 'off to lunch' is a reason, not the clear subcommand",
+    r.ok && afkRepository.get(gid, uid)?.reason === "off to lunch",
+    `reason=${JSON.stringify(afkRepository.get(gid, uid)?.reason)}`);
+  r = await runCommand(A, ">afk off", { authorId: uid });
+  report("afk: lone 'off' still clears",
+    r.ok && afkRepository.get(gid, uid) === null);
+  // and lone "clear" too
+  r = await runCommand(A, ">afk busy", { authorId: uid });
+  r = await runCommand(A, ">afk clear", { authorId: uid });
+  report("afk: lone 'clear' clears",
+    r.ok && afkRepository.get(gid, uid) === null);
+
+  // --- m10: >choose with 12 options must be rejected with a usage
+  // error, never silently slice to 10.
+  const C = "./dist/commands/coolsies/choose.js";
+  r = await runCommand(C, `>choose ${Array.from({ length: 12 }, (_, i) => "opt" + i).join(" ")}`);
+  report("choose: 12 options rejected loudly",
+    !r.ok || r.replies.some((x) => String(x).includes("12")),
+    "neither threw nor mentioned the count");
+
+  // --- m9: guildDelete now prunes orphaned user rows. Seed data that
+  // ONLY the departing guild references, delete the guild, and check
+  // the users row is gone while still-referenced users survive.
+  const { guildRepository } = await import("./dist/repositories/guilds.js");
+  const { pruneOrphanedUsers } = await import("./dist/repositories/shared.js");
+  const { warningService } = await import("./dist/services/warnings.js");
+  const onlyHere = "888888888888888888";
+  const keptUser = uid; // has a suggestion row in THIS guild too — see below
+  const { ensureUser } = await import("./dist/repositories/shared.js");
+  ensureUser(onlyHere); ensureUser(keptUser);
+  // onlyHere references something in the guild (a warning) so it's
+  // cascade-removed with the guild, then pruned; keptUser must survive
+  // because... nothing references it after cascade — both get pruned.
+  warningService.add(gid, onlyHere, DEV, "cascade me");
+  // Give keptUser a reference OUTSIDE the departing guild: a joke.
+  const { jokeService } = await import("./dist/services/jokes.js");
+  const jokeId = jokeService.add("survivor joke", keptUser);
+  guildRepository.remove(gid);
+  const pruned = pruneOrphanedUsers();
+  const userGone = getDb().prepare("SELECT COUNT(*) AS n FROM users WHERE user_id = ?").get(onlyHere).n === 0;
+  const userKept = getDb().prepare("SELECT COUNT(*) AS n FROM users WHERE user_id = ?").get(keptUser).n === 1;
+  report("users prune: guild-only user removed, joke-author kept",
+    userGone && userKept, `pruned=${pruned}`);
+  jokeRepository.remove(jokeId);
+  // restore the guild row so the rest of the harness keeps working
+  const { ensureGuild } = await import("./dist/repositories/shared.js");
+  ensureGuild(gid);
 }
 
 // ============================================================

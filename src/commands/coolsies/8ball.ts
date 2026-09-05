@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { SlashCommandBuilder, MessageFlags, type ChatInputCommandInteraction, type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
@@ -38,7 +38,14 @@ const command: Command = {
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
-    await interaction.reply({ embeds: [buildReply(interaction.options.getString("question", true))] });
+    // Trim like the prefix path does — a whitespace-only question
+    // would otherwise render as an empty bold line.
+    const question = interaction.options.getString("question", true).trim();
+    if (!question) {
+      await interaction.reply({ embeds: [errorEmbed("Ask me an actual question — try `>8ball will I win the lottery?`.")], flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.reply({ embeds: [buildReply(question)] });
   },
 
   prefixExecute: async (message: Message, args: string[]) => {

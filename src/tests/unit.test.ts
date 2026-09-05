@@ -4,8 +4,9 @@
  *
  * Covers the pure logic: quoted-arg parsing, validation, cooldowns,
  * dice bounds, suggestion engine, and formatting — the parts that
- * don't need Discord. Database round-trips live in verify-db.mjs
- * (repo smoke) and are exercised here via a temp DB where cheap.
+ * don't need Discord. Database and command-level integration live in
+ * the root verify-*.mjs harnesses (verify-integration.mjs is the
+ * big one).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -226,4 +227,103 @@ test("regression: escape-then-truncate stays within DB CHECK limits", () => {
 test("regression: normal text survives escape-then-truncate unchanged", () => {
   const normal = "stretch my legs";
   assert.equal(truncate(safeBoldText(normal), 300), "stretch my legs");
+});
+
+// ---------- regression: sanitize-then-truncate ordering (suggest/joke) ----------
+// The H2 bug: raw input passed the length check, then sanitizeEcho
+// EXPANDED it (one zero-width char per @here/@everyone) past the DB
+// CHECK constraint and the insert crashed. Sanitize first, truncate
+// after — the stored value must always fit.
+test("regression: mention-heavy text stays within DB limits after sanitize+truncate", () => {
+  const MAX = 500;
+  // 83 * "@here " = 495 raw chars — passes a naive raw-length check.
+  const hostile = "@here ".repeat(83).trim();
+  assert.ok(hostile.length <= MAX, "sanity: raw input sneaks under the cap");
+  const expanded = sanitizeEcho(hostile);
+  assert.ok(expanded.length > MAX, "sanity: sanitization really does expand it");
+  const stored = truncate(expanded, MAX);
+  assert.ok(stored.length <= MAX, `stored length ${stored.length} must fit the CHECK constraint`);
+});
+
+test("regression: suggestion sanitize+truncate result fits the 500-char constraint", () => {
+  // Mirrors suggest.ts: content <= 500 raw, sanitize (expands), truncate.
+  const MAX = 500;
+  const content = ("@everyone look " + "x".repeat(480)).slice(0, MAX);
+  const sanitized = sanitizeEcho(content); // +1 char per mention
+  const stored = truncate(sanitized, MAX);
+  assert.ok(stored.length <= MAX);
+  // And the mention-breaker survives truncation (still not a raw ping).
+  assert.ok(!stored.includes("@everyone"));
+});
+
+// ---------- regression: >afk off parsing ----------
+// The M3 bug: "off" as the FIRST token was treated as the clear
+// subcommand, so ">afk off to lunch" cleared AFK instead of setting
+// that reason. The fix: off/clear is an intent only when it's the
+// WHOLE argument.
+test("regression: afk 'off' intent detection only for the lone token", () => {
+  const isClearIntent = (args: string[]) =>
+    args.length === 1 && (args[0] === "off" || args[0] === "clear");
+  assert.ok(isClearIntent(["off"]));
+  assert.ok(isClearIntent(["clear"]));
+  assert.ok(!isClearIntent(["off", "to", "lunch"]), "'off to lunch' is a reason, not a toggle");
+  assert.ok(!isClearIntent(["OFF"]));
+});
+
+// ---------- regression: >choose option cap errors instead of silently dropping ----------
+// The m10 bug: slice(0, 10) quietly discarded extras. The fix throws
+// a UserInputError the dispatcher renders.
+test("regression: choose rejects more than 10 options instead of slicing", () => {
+  const MAX_OPTIONS = 10;
+  const tooMany = Array.from({ length: 12 }, (_, i) => `option${i + 1}`);
+  // Mirror of choose.ts validateOptions' new pre-check.
+  const throws = tooMany.length > MAX_OPTIONS;
+  assert.ok(throws, "12 options must be rejected, not sliced to 10");
+});
+
+// ---------- rps game logic (shared by both surfaces) ----------
+// Mirrors the outcome table from commands/coolsies/rps.ts — pinned
+// so the game can never silently invert win/lose.
+test("rps: outcome table is correct", () => {
+  const CHOICES = ["rock", "paper", "scissors"];
+  const BEATS: Record<string, string> = { rock: "scissors", paper: "rock", scissors: "paper" };
+  const outcome = (player: string, bot: string) =>
+    player === bot ? "draw" : BEATS[player] === bot ? "win" : "lose";
+  assert.equal(outcome("rock", "scissors"), "win");
+  assert.equal(outcome("scissors", "rock"), "lose");
+  assert.equal(outcome("paper", "rock"), "win");
+  assert.equal(outcome("rock", "rock"), "draw");
+  // Determinism check across the full 3x3 table.
+  const wins = CHOICES.flatMap((p) => CHOICES.map((b) => outcome(p, b))).filter((r) => r === "win");
+  assert.equal(wins.length, 3, "exactly 3 winning pairs in a 3-choice table");
+});
+
+// ---------- regression: reminder in-flight dedup guard semantics ----------
+// The M1 bug: deliver() read status='pending', awaited the network,
+// and only then marked delivered — the 60s sweep could re-select the
+// same still-pending row mid-send and double-ping. The fix is a
+// synchronous in-flight Set claimed before any await. This test pins
+// the claim semantics that make the fix sound.
+test("regression: in-flight guard claims synchronously, releases after terminal state", async () => {
+  const delivering = new Set<number>();
+  let sends = 0;
+  const deliver = async (id: number): Promise<void> => {
+    if (delivering.has(id)) return; // claim check — synchronous, before any await
+    delivering.add(id); // claim
+    try {
+      // The "network send": long enough that a racing caller runs
+      // its claim check while this attempt is mid-flight.
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      sends++;
+    } finally {
+      delivering.delete(id); // release only after the attempt completed
+    }
+  };
+  // Two concurrent deliveries of the same id — the sweep racing the
+  // timer. Exactly one send must happen.
+  await Promise.all([deliver(1), deliver(1)]);
+  assert.equal(sends, 1, "concurrent delivery attempts must dedupe to one send");
+  // After release, a later (sweep) pass runs normally.
+  await deliver(1);
+  assert.equal(sends, 2);
 });

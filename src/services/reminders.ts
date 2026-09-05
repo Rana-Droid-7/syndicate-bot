@@ -25,9 +25,17 @@ export const reminderService = {
     if (shuttingDown) return;
     const delay = Math.max(0, row.due_unix_ms - Date.now());
     log.info("TIMER", `Reminder #${row.id} for ${row.user_id} scheduled — firing in ${delay}ms.`);
-    safeSetTimeout(() => {
-      void deliver(client, row.id);
-    }, delay);
+    // unref'd: the Discord connection, not a pending reminder timer,
+    // keeps the live process alive — and one-shot harnesses can exit
+    // without waiting out a stray reminder.
+    safeSetTimeout(
+      () => {
+        void deliver(client, row.id);
+      },
+      delay,
+      undefined,
+      { unref: true },
+    );
   },
 
   async create(
@@ -83,32 +91,54 @@ async function deliver(client: Client, id: number): Promise<void> {
   // it, so nothing is lost by standing down here.
   if (shuttingDown) return;
 
-  let reminder: ReminderRow | null;
-  try {
-    reminder = reminderRepository.get(id);
-  } catch (error) {
-    // DB closed/unavailable between the check above and here — the
-    // sweep on next boot handles it. Never crash the process.
-    log.warn("TIMER", `Reminder #${id} could not be read (storage closing?) — deferring to next startup.`, error);
-    return;
-  }
-  if (!reminder || reminder.status !== "pending") return;
-
-  const channel = await client.channels.fetch(reminder.channel_id).catch(() => null);
-  if (!channel || !channel.isTextBased() || !("send" in channel)) {
-    log.warn("TIMER", `Reminder #${id} undeliverable — channel ${reminder.channel_id} gone. Marking failed.`);
-    reminderRepository.markFailed(id);
-    return;
-  }
+  // In-flight guard: a timer's deliver() and the sweep can race —
+  // the sweep re-selects every still-pending due row every 60s, so
+  // a delivery that's mid-send (channel fetch, Discord round-trip,
+  // a rate-limit backoff) would otherwise be selected AGAIN and the
+  // user double-pinged. The guard is claimed synchronously before
+  // any await and only released after the row reaches a terminal
+  // status, so exactly one delivery attempt can ever run per id.
+  if (delivering.has(id)) return;
+  delivering.add(id);
 
   try {
-    await channel.send(`⏰ <@${reminder.user_id}>, reminder: **${reminder.content}**`);
-    reminderRepository.markDelivered(id);
-    log.info("TIMER", `Delivered reminder #${id} to ${reminder.user_id} in channel ${reminder.channel_id}.`);
-  } catch (error) {
-    log.error("TIMER", `Failed to deliver reminder #${id}`, error);
-    reminderRepository.markFailed(id);
+    let reminder: ReminderRow | null;
+    try {
+      reminder = reminderRepository.get(id);
+    } catch (error) {
+      // DB closed/unavailable between the check above and here — the
+      // sweep on next boot handles it. Never crash the process.
+      log.warn("TIMER", `Reminder #${id} could not be read (storage closing?) — deferring to next startup.`, error);
+      return;
+    }
+    if (!reminder || reminder.status !== "pending") return;
+
+    const channel = await client.channels.fetch(reminder.channel_id).catch(() => null);
+    if (!channel || !channel.isTextBased() || !("send" in channel)) {
+      log.warn("TIMER", `Reminder #${id} undeliverable — channel ${reminder.channel_id} gone. Marking failed.`);
+      reminderRepository.markFailed(id);
+      return;
+    }
+
+    try {
+      await channel.send(`⏰ <@${reminder.user_id}>, reminder: **${reminder.content}**`);
+      reminderRepository.markDelivered(id);
+      log.info("TIMER", `Delivered reminder #${id} to ${reminder.user_id} in channel ${reminder.channel_id}.`);
+    } catch (error) {
+      log.error("TIMER", `Failed to deliver reminder #${id}`, error);
+      reminderRepository.markFailed(id);
+    }
+  } finally {
+    // Release only after the row is terminal (delivered/failed) — if
+    // deliver() exited early WITHOUT reaching a terminal status (e.g.
+    // the row vanished mid-flight), releasing lets the sweep retry
+    // it rather than stranding it pending-but-unguarded forever.
+    delivering.delete(id);
   }
 }
+
+// IDs with a delivery attempt currently in flight. Module-scoped so
+// timers and the sweep share the same view.
+const delivering = new Set<number>();
 
 export const reminderConstants = { MAX_DELAY_MS };

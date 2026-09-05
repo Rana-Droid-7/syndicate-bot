@@ -35,8 +35,4 @@ export const suggestionRepository = {
       .prepare(`SELECT * FROM suggestions WHERE guild_id = ? ORDER BY id DESC`)
       .all(guildId) as SuggestionRow[];
   },
-
-  setStatus(id: number, status: string): void {
-    getDb().prepare(`UPDATE suggestions SET status = ? WHERE id = ?`).run(status, id);
-  },
 };

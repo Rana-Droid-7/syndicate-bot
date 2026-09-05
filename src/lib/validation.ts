@@ -6,13 +6,6 @@ import { UserInputError } from "./errors.js";
  * client to have pre-filtered it.
  */
 
-export interface ParsedArgs {
-  /** Positional tokens (quotes consumed, escaping resolved). */
-  args: string[];
-  /** The full raw remainder after the command name, verbatim. */
-  rest: string;
-}
-
 /**
  * Splits a prefix command's argument string on whitespace, but
  * keeps double-quoted sections ("like this") as single tokens.
@@ -21,20 +14,18 @@ export interface ParsedArgs {
  * Malformed quoting falls back to whitespace splitting with the
  * quotes left literal — a typo'd quote must never crash dispatch.
  */
-export function parseQuotedArgs(input: string): ParsedArgs {
+export function parseQuotedArgs(input: string): { args: string[] } {
   const raw = input;
   const tokens: string[] = [];
   let current = "";
   let inQuotes = false;
   let wasQuoted = false;
-  let any = false;
 
   const push = () => {
     if (current.length > 0 || wasQuoted) {
       tokens.push(current);
       current = "";
       wasQuoted = false;
-      any = true;
     }
   };
 
@@ -72,12 +63,7 @@ export function parseQuotedArgs(input: string): ParsedArgs {
   // Unterminated quote: treat accumulated content as one token.
   push();
 
-  if (!any && tokens.length === 0) {
-    return { args: [], rest: raw.trim() };
-  }
-
-  const restStart = raw.length - raw.trimStart().length;
-  return { args: tokens, rest: raw.slice(restStart).trim() };
+  return { args: tokens };
 }
 
 /** True if the string is a plausible Discord snowflake (ID). */

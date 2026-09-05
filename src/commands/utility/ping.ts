@@ -3,6 +3,12 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { log } from "../../core/logger.js";
 
+function wsPingText(ping: number): string {
+  // -1 = no heartbeat yet (just started / reconnecting) — show that
+  // honestly instead of a bogus "-1ms".
+  return ping >= 0 ? `\`${ping}ms\`` : "connecting…";
+}
+
 const command: Command = {
   category: "utility",
   surface: "both",
@@ -15,8 +21,12 @@ const command: Command = {
   async execute(interaction: ChatInputCommandInteraction) {
     log.info("CMD", `/ping invoked by ${interaction.user.tag} (${interaction.user.id})`);
     const sent = await interaction.reply({ content: "🏓 Pinging...", withResponse: true });
-    const latency =
-      (sent.resource?.message?.createdTimestamp ?? Date.now()) - interaction.createdTimestamp;
+    const sentAt = sent.resource?.message?.createdTimestamp;
+    // If the ack payload carried no timestamp, "now" is the only
+    // remaining reference — but subtracting the interaction's own
+    // creation time would report ~0ms for an arbitrarily slow ack,
+    // so only measure when both ends are real.
+    const latency = sentAt !== undefined ? sentAt - interaction.createdTimestamp : null;
 
     await interaction.editReply({
       content: null,
@@ -24,8 +34,8 @@ const command: Command = {
         baseEmbed()
           .setTitle("🏓 Pong!")
           .addFields(
-            { name: "Roundtrip Latency", value: `\`${latency}ms\``, inline: true },
-            { name: "WebSocket Ping", value: `\`${interaction.client.ws.ping}ms\``, inline: true },
+            { name: "Roundtrip Latency", value: latency !== null ? `\`${latency}ms\`` : "measuring…", inline: true },
+            { name: "WebSocket Ping", value: wsPingText(interaction.client.ws.ping), inline: true },
           ),
       ],
     });
@@ -43,7 +53,7 @@ const command: Command = {
           .setTitle("🏓 Pong!")
           .addFields(
             { name: "Roundtrip Latency", value: `\`${latency}ms\``, inline: true },
-            { name: "WebSocket Ping", value: `\`${message.client.ws.ping}ms\``, inline: true },
+            { name: "WebSocket Ping", value: wsPingText(message.client.ws.ping), inline: true },
           ),
       ],
     });

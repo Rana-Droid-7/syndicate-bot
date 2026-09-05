@@ -2,11 +2,8 @@ import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } f
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { safeEvaluate } from "../../lib/safeMath.js";
+import { escapeCodeBlock } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
-
-function sanitizeForCodeBlock(text: string): string {
-  return text.replace(/`/g, "'");
-}
 
 async function buildEmbed(expression: string) {
   const result = await safeEvaluate(expression);
@@ -18,8 +15,8 @@ async function buildEmbed(expression: string) {
   return baseEmbed()
     .setTitle("🧮 Calculator")
     .addFields(
-      { name: "Expression", value: `\`${sanitizeForCodeBlock(expression)}\``, inline: false },
-      { name: "Result", value: `\`${sanitizeForCodeBlock(result.resultText ?? "")}\``, inline: false },
+      { name: "Expression", value: `\`${escapeCodeBlock(expression)}\``, inline: false },
+      { name: "Result", value: `\`${escapeCodeBlock(result.resultText ?? "")}\``, inline: false },
     );
 }
 

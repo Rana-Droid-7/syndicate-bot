@@ -1,0 +1,44 @@
+# CI — typecheck, build, unit tests, and integration harness on every
+# push/PR. No Discord credentials needed: tests use throwaway DBs and
+# mock the API surface.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck (strict)
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: node --test --test-reporter=spec dist/tests/unit.test.js
+
+      - name: Timer verification (safeSetTimeout chaining)
+        run: node verify_timer.mjs
+
+      - name: Lookup engine verification
+        run: node verify_lookup.mjs
+
+      - name: Dispatcher edge-cases
+        run: node verify-dispatcher.mjs
+
+      - name: Integration + attack harness
+        run: node verify-integration.mjs

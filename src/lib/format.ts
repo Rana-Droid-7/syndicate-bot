@@ -33,13 +33,3 @@ export type TimestampStyle = "t" | "T" | "d" | "D" | "f" | "F" | "R";
 export function discordTimestamp(unixSeconds: number, style: TimestampStyle = "f"): string {
   return `<t:${unixSeconds}:${style}>`;
 }
-
-/**
- * Makes user-provided text safe to embed inside **bold** markdown.
- * A literal `**` or `__` in a username, AFK reason, or reminder
- * would otherwise terminate the bold early and garble the whole
- * line. Zero-width-joining isn't enough — just strip the markers.
- */
-export function escapeMarkdownBold(text: string): string {
-  return text.replace(/\*\*/g, "*\u200b*").replace(/__/g, "_\u200b_");
-}

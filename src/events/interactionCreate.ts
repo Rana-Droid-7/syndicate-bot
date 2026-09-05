@@ -4,14 +4,9 @@ import type { SyndicateClient } from "../core/client.js";
 import { baseEmbed, errorEmbed } from "../lib/embeds.js";
 import { sendDevLog } from "../lib/devlog.js";
 import { cooldowns } from "../lib/cooldowns.js";
-import {
-  BotError,
-  CooldownError,
-  ContextError,
-  DatabaseError,
-  PermissionError,
-  UserInputError,
-} from "../lib/errors.js";
+import { mapErrorToReply } from "../lib/errors.js";
+import { ContextError } from "../lib/errors.js";
+import { errorDetail } from "../lib/safeError.js";
 import { log } from "../core/logger.js";
 
 const event: BotEvent<"interactionCreate"> = {
@@ -99,26 +94,32 @@ async function handleSlashError(
       log.error("CMD", `Also failed to notify user about /${name} error (token likely expired)`, replyError),
     );
 
-  if (error instanceof CooldownError) return void (await reply(error.message));
-  if (error instanceof UserInputError) {
-    if (error.usage) {
-      return void (await interaction
-        .reply({
-          embeds: [
-            errorEmbed(error.message).addFields({ name: "Correct usage", value: `\`${error.usage}\``, inline: false }),
-          ],
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => null));
+  const mapped = mapErrorToReply(error);
+
+  if (mapped) {
+    if (mapped.usage) {
+      const embed = errorEmbed(mapped.description).addFields({ name: "Correct usage", value: `\`${mapped.usage}\``, inline: false });
+      await (interaction.replied || interaction.deferred
+        ? interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral })
+        : interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral })
+      ).catch(() => null);
+    } else {
+      await reply(mapped.description);
     }
-    return void (await reply(error.message));
+    if (mapped.notifyDeveloper) {
+      await sendDevLog(
+        interaction.client,
+        baseEmbed()
+          .setTitle("⚠️ Database Error")
+          .addFields(
+            { name: "Surface", value: "slash", inline: true },
+            { name: "Command", value: `/${name}`, inline: true },
+            { name: "Detail", value: `\`\`\`${errorDetail(error)}\`\`\``, inline: false },
+          ),
+      ).catch((devlogError) => log.error("CMD", "Failed to send devlog for database error", devlogError));
+    }
+    return;
   }
-  if (error instanceof PermissionError) return void (await reply(error.message));
-  if (error instanceof ContextError) return void (await reply(error.message));
-  if (error instanceof DatabaseError) {
-    return void (await reply("Something's wrong with my storage — the developer has been notified. Try again in a moment."));
-  }
-  if (error instanceof BotError) return void (await reply(error.message));
 
   await reply("Something went wrong running that command.");
 
@@ -132,7 +133,7 @@ async function handleSlashError(
         { name: "Command", value: `/${name}`, inline: true },
         { name: "User", value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
         { name: "Server", value: interaction.guild ? `${interaction.guild.name} (\`${interaction.guild.id}\`)` : "DM", inline: false },
-        { name: "Error", value: `\`\`\`${String(error).slice(0, 1000)}\`\`\``, inline: false },
+        { name: "Error", value: `\`\`\`${errorDetail(error)}\`\`\``, inline: false },
       ),
   ).catch((devlogError) => log.error("CMD", "Failed to send devlog for command error", devlogError));
 }

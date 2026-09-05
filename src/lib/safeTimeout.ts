@@ -19,15 +19,23 @@ const DEFAULT_MAX_HOP_MS = 2_147_483_647; // 2^31 - 1, ~24.855 days
  * the CHAINED path with small, fast hops in CI — the real bug
  * (fires-in-1ms-instead-of-waiting) lived entirely in the hop
  * arithmetic, not in the single-shot passthrough.
+ *
+ * `unref: true` marks every timer in the chain unref'd — the process
+ * won't stay alive just for pending reminder timers. In the live bot
+ * the Discord connection holds the loop open and the timers still
+ * fire normally; in one-shot scripts (tests, harnesses) the process
+ * can exit without waiting minutes for a stray reminder to mature.
  */
 export function safeSetTimeout(
   callback: () => void,
   delayMs: number,
   maxHopMs: number = DEFAULT_MAX_HOP_MS,
+  options: { unref?: boolean } = {},
 ): void {
   if (delayMs <= maxHopMs) {
     log.debug("TIMER", `Scheduling timer for ${delayMs}ms (within safe range).`);
-    setTimeout(callback, delayMs);
+    const timer = setTimeout(callback, delayMs);
+    if (options.unref) timer.unref();
     return;
   }
 
@@ -40,8 +48,9 @@ export function safeSetTimeout(
       `Scheduling an intermediate ${maxHopMs}ms hop, ${remaining}ms will remain after that.`,
   );
 
-  setTimeout(() => {
+  const timer = setTimeout(() => {
     log.debug("TIMER", `Intermediate hop elapsed, ${remaining}ms remaining — rescheduling.`);
-    safeSetTimeout(callback, remaining, maxHopMs);
+    safeSetTimeout(callback, remaining, maxHopMs, options);
   }, maxHopMs);
+  if (options.unref) timer.unref();
 }

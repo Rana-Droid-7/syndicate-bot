@@ -1,19 +1,23 @@
-# Syndicate Bot — v0.5.0-beta
+# Syndicate Bot — v0.5.2-beta
 
 A polished Discord bot: utility, fun ("Coolsies"), moderation, admin,
 and developer tiers — built with discord.js + TypeScript on a real
 SQL database.
 
-v0.5.0 is a ground-up engineering release: **persistent storage**
-(SQLite — AFK, reminders, warnings, suggestions, and jokes now
-survive restarts and crashes), a **new Coolsies category** (dice,
-coinflip, 8-ball, choose, random, rate, jokes), **`>` as the primary
+v0.5.2 is the **hardening release**: every log surface censors
+secrets, moderation re-validates all parties after confirmation
+dialogs, the math worker runs with hard heap limits, and the repo
+ships CI (GitHub + GitLab), a one-shot `npm run verify`, a private
+LICENSE, and a new **`>rps`** game. It builds on v0.5.1's bug-hunt
+(fifteen audit bugs fixed and regression-tested) and v0.5.0's
+ground-up engineering: **persistent storage** (SQLite — AFK,
+reminders, warnings, suggestions, and jokes survive restarts and
+crashes), the **Coolsies category**, **`>` as the primary
 interface** for public commands (slash is reserved for
 moderation/admin/developer tools that need structured input and
 native permission gating), **per-user cooldowns**, quoted-argument
-parsing, a typed **error taxonomy** that renders clean messages with
-correct usage, and **load-time command validation** that refuses to
-boot on broken definitions.
+parsing, a typed **error taxonomy**, and **load-time command
+validation** that refuses to boot on broken definitions.
 
 ## Setup
 
@@ -69,13 +73,13 @@ input gets a **starts-with lookup** (`>se` → serverinfo, setnick,
 userinfo...) or a **typo suggestion** (`>halp` → "did you mean
 **>help**?").
 
-## Commands (v0.5.0-beta)
+## Commands (v0.5.2-beta)
 
 ### 🛠️ Utility — `>`, open to everyone
 `help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` — plus right-click **User Info** and **Avatar** context commands.
 
 ### 🎉 Coolsies — `>` and `/`, open to everyone
-`dice`, `coinflip`, `8ball`, `choose`, `random`, `rate`, `joke say` — and `joke add/list/remove/edit/enable/disable` for developers (strictly trusted-ID-gated, never roles).
+`dice`, `coinflip`, `8ball`, `choose`, `random`, `rate`, `rps`, `joke say` — and `joke add/list/remove/edit/enable/disable` for developers (strictly trusted-ID-gated, never roles).
 
 ### 🛡️ Moderation — slash-only, requires the matching Discord permission
 `/kick`, `/ban`, `/timeout`, `/warn add|list|clear`, `/purge`
@@ -110,7 +114,7 @@ src/
   events/       ready, interactionCreate, messageCreate, guildCreate, guildDelete
   handlers/     command + event loaders (load-time validation)
   lib/          embeds, validation, cooldowns, errors, permissions, confirm,
-                safeMath, safeTimeout, suggest, help, usage, format, invite, devlog
+                safeMath, safeTimeout, safeError, suggest, help, format, invite, devlog
   services/     afk, reminders, warnings, suggestions, jokes  (business logic)
   repositories/ afk, reminders, warnings, suggestions, jokes  (SQL only)
   database/     client (WAL, migrations, integrity check)
@@ -132,9 +136,16 @@ else touches SQL.
 ## Development
 
 - `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine)
+- `npm run verify` — everything: typecheck, build, unit tests, and all four verification harnesses. Same loop CI runs on every push (GitHub Actions + GitLab CI included).
 - `verify_timer.mjs` — chained-timer regression (the >24.8-day setTimeout bug)
 - `verify_lookup.mjs` — prefix lookup/suggestion scenarios
+- `verify-dispatcher.mjs` — prefix dispatch edge-case torture
+- `verify-integration.mjs` — full command + attack harness against a throwaway database
 - Load-time errors are intentional: a duplicate command name or missing metadata refuses to boot the bot instead of silently dropping it.
+
+## License
+
+Private — **not for public use**. See [LICENSE.md](LICENSE.md).
 
 ## What's next
 

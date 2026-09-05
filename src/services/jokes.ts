@@ -2,6 +2,13 @@ import { jokeRepository, type JokeRow } from "../repositories/jokes.js";
 import { log } from "../core/logger.js";
 import { sanitizeEcho, truncate } from "../lib/validation.js";
 
+// Matches the DB CHECK constraint on jokes.content. Truncation happens
+// AFTER sanitization here because sanitizeEcho EXPANDS text (each
+// @everyone/@here gains a zero-width mention-breaker) — validating the
+// raw input alone can't stop the stored result from exceeding the
+// constraint and crashing the insert.
+const MAX_JOKE_LENGTH = 500;
+
 /**
  * Joke service. Public reads are random SQL-side; every mutation is
  * developer-only and validated here before touching the store.
@@ -17,7 +24,9 @@ export const jokeService = {
   },
 
   add(content: string, developerId: string): number {
-    const safe = sanitizeEcho(content.trim());
+    // Sanitize first (text expands), then truncate to the stored cap —
+    // see MAX_JOKE_LENGTH note above.
+    const safe = truncate(sanitizeEcho(content.trim()), MAX_JOKE_LENGTH);
     const id = jokeRepository.add(safe, developerId);
     log.info("COOLSIES", `Joke #${id} added by developer ${developerId}.`);
     return id;
@@ -38,7 +47,8 @@ export const jokeService = {
   },
 
   edit(id: number, content: string): boolean {
-    const safe = sanitizeEcho(content.trim());
+    // Same sanitize-then-truncate ordering as add().
+    const safe = truncate(sanitizeEcho(content.trim()), MAX_JOKE_LENGTH);
     const ok = jokeRepository.edit(id, safe);
     log.info("COOLSIES", ok ? `Joke #${id} edited.` : `Joke #${id} edit failed — not found.`);
     return ok;

@@ -9,6 +9,7 @@ import {
 } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
+import { mentionToId, isSnowflake } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
 export function buildAvatarEmbed(user: User) {
@@ -64,8 +65,8 @@ const command: Command = {
       return;
     }
 
-    const targetId = mentioned?.id ?? rawArg!.replace(/[<@!>]/g, "");
-    if (!/^\d{15,20}$/.test(targetId)) {
+    const targetId = mentioned?.id ?? mentionToId(rawArg!);
+    if (!isSnowflake(targetId)) {
       log.debug("PREFIX", `>avatar given invalid target: ${JSON.stringify(rawArg)}`);
       await message.reply(`\`${rawArg}\` doesn't look like a valid user mention or ID.`);
       return;
