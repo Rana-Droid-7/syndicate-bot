@@ -140,5 +140,3 @@ async function deliver(client: Client, id: number): Promise<void> {
 // IDs with a delivery attempt currently in flight. Module-scoped so
 // timers and the sweep share the same view.
 const delivering = new Set<number>();
-
-export const reminderConstants = { MAX_DELAY_MS };

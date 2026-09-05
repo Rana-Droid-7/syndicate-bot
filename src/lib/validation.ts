@@ -76,48 +76,6 @@ export function mentionToId(value: string): string {
   return value.replace(/[<@!>]/g, "");
 }
 
-/**
- * Resolves a "user target" argument: mention, bare ID, or null.
- * Throws UserInputError (with usage) on garbage input.
- */
-export function parseUserTarget(rawArg: string | undefined, usage: string): string {
-  if (!rawArg) throw new UserInputError("You need to give me a user.", usage);
-  const id = mentionToId(rawArg);
-  if (!isSnowflake(id)) {
-    throw new UserInputError(`\`${rawArg}\` doesn't look like a valid user mention or ID.`, usage);
-  }
-  return id;
-}
-
-/**
- * Parses a duration into milliseconds. Supports single units
- * ("10m", "2d") and combined descending units ("1h30m", "2d4h").
- * Bare numbers are rejected as ambiguous. Returns null for
- * unparseable input, 0-safe (positive result only).
- */
-export function parseDuration(input: string): number | null {
-  const units: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
-  const order = ["d", "h", "m", "s"]; // must appear in this order at most once each
-  const trimmed = input.trim().toLowerCase();
-
-  if (!/^\d+[smhd]([0-9]+[smhd])*$/.test(trimmed)) return null;
-
-  let total = 0;
-  let lastUnitIndex = -1;
-  const parts = trimmed.match(/\d+[smhd]/g) ?? [];
-  for (const part of parts) {
-    const value = Number(part.slice(0, -1));
-    const unit = part.slice(-1);
-    const unitIndex = order.indexOf(unit);
-    if (unitIndex === -1) return null;
-    // Combined durations must be descending (1h30m ok, 30m1h invalid).
-    if (parts.length > 1 && unitIndex <= lastUnitIndex) return null;
-    lastUnitIndex = unitIndex;
-    total += value * units[unit];
-  }
-  return total > 0 ? total : null;
-}
-
 /** Parses an integer within [min, max]; throws UserInputError otherwise. */
 export function parseIntInRange(raw: string, min: number, max: number, label: string, usage?: string): number {
   const value = Number(raw);

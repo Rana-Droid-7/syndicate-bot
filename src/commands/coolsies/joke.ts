@@ -18,9 +18,9 @@ const handlers = buildCollectionHandlers({
 });
 
 // ============================================================
-// Public: say
+// Public: tell one
 // ============================================================
-async function say(message: Message): Promise<void> {
+async function tellOne(message: Message): Promise<void> {
   const joke = jokeService.random();
   if (!joke) {
     await message.reply({
@@ -68,7 +68,7 @@ const command: Command = {
 
     try {
       if (!sub) {
-        await say(message);
+        await tellOne(message);
         return;
       }
 

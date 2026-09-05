@@ -10,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseQuotedArgs, isSnowflake, parseDuration, parseIntInRange, truncate, escapeMarkdownBold, sanitizeEcho, escapeCodeBlock, safeBoldText } from "../lib/validation.js";
+import { parseQuotedArgs, isSnowflake, parseIntInRange, truncate, escapeMarkdownBold, sanitizeEcho, escapeCodeBlock, safeBoldText } from "../lib/validation.js";
 import { Cooldowns } from "../lib/cooldowns.js";
 import { rollDie } from "../commands/coolsies/dice.js";
 import { editDistance, findStartsWithMatches, findClosestMatch, type SuggestionCandidate } from "../lib/suggest.js";
@@ -66,17 +66,6 @@ test("isSnowflake accepts 15-20 digits", () => {
   assert.ok(!isSnowflake("123"));
   assert.ok(!isSnowflake("123456789012345678901"));
   assert.ok(!isSnowflake("abc"));
-});
-
-test("parseDuration handles units and combos", () => {
-  assert.equal(parseDuration("10m"), 600000);
-  assert.equal(parseDuration("1h"), 3600000);
-  assert.equal(parseDuration("2d"), 172800000);
-  assert.equal(parseDuration("1h30m"), 5400000);
-  assert.equal(parseDuration("90s"), 90000);
-  assert.equal(parseDuration("junk"), null);
-  assert.equal(parseDuration("10"), null); // bare number = ambiguous
-  assert.equal(parseDuration(""), null);
 });
 
 test("parseIntInRange enforces bounds", () => {
@@ -197,15 +186,6 @@ test("regression: quote grouping survives dispatcher handoff (no double-parse)",
   // The OLD bug: re-join + re-parse split it apart...
   const rebroken = parseQuotedArgs(args.join(" ")).args;
   assert.notDeepEqual(rebroken, args); // ...proving why double-parse is wrong
-});
-
-test("regression: duration combos in every valid order shape", () => {
-  assert.equal(parseDuration("1h30m"), 5400000);
-  assert.equal(parseDuration("2d4h"), 2 * 86400000 + 4 * 3600000);
-  assert.equal(parseDuration("1m30s"), 90000);
-  assert.equal(parseDuration("1d2h30m45s"), 86400000 + 7200000 + 1800000 + 45000);
-  assert.equal(parseDuration("30m1h"), null); // ascending order invalid
-  assert.equal(parseDuration("1h1h"), null); // duplicate unit invalid
 });
 
 test("regression: sanitizeEcho keeps the mention-breaker zero-width space", () => {

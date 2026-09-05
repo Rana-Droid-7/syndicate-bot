@@ -256,7 +256,7 @@ console.log("\n=== JOKE ===");
 
   // public say with empty store
   let r = await runCommand(J, ">joke");
-  report("joke: say with empty store -> clean error", r.ok && r.replies.length > 0);
+  report("joke: empty store -> clean error", r.ok && r.replies.length > 0);
 
   // pleb tries add
   r = await runCommand(J, '>joke add "haha"', { authorId: PLEB });
@@ -271,11 +271,11 @@ console.log("\n=== JOKE ===");
     jokes[0].content === "why do coders like dark mode? because light attracts bugs!",
     `got: ${jokes[0]?.content}`);
 
-  // say now works and bumps usage (random pick — any enabled row's
-  // counter moves, not necessarily the newest one)
+  // plain joke now (v0.6.3, no 'say'): works and bumps usage (random
+  // pick — any enabled row's counter moves, not the newest one)
   r = await runCommand(J, ">joke");
   const anyUsed = jokeRepository.list(100).some((j) => j.usage_count > 0);
-  report("joke: say returns joke", r.ok && anyUsed);
+  report("joke: plain tell works", r.ok && anyUsed);
 
   // exec payload — must be stored as text, never executed
   r = await runCommand(J, '>joke add "eval(process.exit(1)) ; rm -rf /"', { authorId: DEV });
