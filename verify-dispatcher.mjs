@@ -50,3 +50,8 @@ for (const raw of edgeInputs) {
 }
 console.log(crashes === 0 ? "DISPATCHER EDGE-CASES: ALL SAFE" : crashes + " CRASHES");
 closeDb();
+// Small settled-exit delay: closing the SQLite handle and letting the
+// process die in the same tick races better-sqlite3's native teardown
+// on some platforms (observed as SIGSEGV/139 on CI's Node 20). A
+// clean next-tick exit avoids the race entirely.
+setTimeout(() => process.exit(crashes === 0 ? 0 : 1), 50);
