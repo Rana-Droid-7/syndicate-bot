@@ -14,7 +14,9 @@ verify:
     - npm ci --cache .npm
     - npx tsc --noEmit
     - npm run build
-    - node --test --test-reporter=spec dist/tests/unit.test.js
+    # Placeholder credentials: the unit suite imports the config
+    # module (via poll/parsePollArgs), which requires these to exist.
+    - DISCORD_TOKEN=x CLIENT_ID=123456789012345678 node --test --test-reporter=spec dist/tests/unit.test.js
     - node verify_timer.mjs
     - node verify_lookup.mjs
     - node verify-dispatcher.mjs
