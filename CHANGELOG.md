@@ -6,13 +6,13 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 
 One prefix, one rule: **public commands live on the prefix (from `.env`, default `>`); slash is exclusively for moderation, admin, and developer tools.**
 
-### Post-release strict-audit fixes (same day)
-- Six commands (`bot`, `calculate`, `help`, `ping`, `roll`, `timestamp`) were missing their `name:` metadata after the surface conversion — typo suggestions never matched them, and all six shared one cooldown key (cross-locking each other). Fixed: names restored, cooldown keys unique again.
-- `package.json` version had drifted (still 0.5.3-beta) — re-synced.
+### Post-release strict-audit fixes (same day — three audit rounds)
+- Nine commands (`bot`, `calculate`, `help`, `ping`, `roll`, `timestamp`, `serverinfo`, `snowflake`, `userinfo`) were missing their `name:` metadata after the surface conversion — typo suggestions never matched them, and they all shared one cooldown key (cross-locking each other). Fixed across two audit rounds: names restored, suggestion coverage verified at runtime (34/34), cooldown keys unique.
+- `package.json` version had drifted (still 0.5.3-beta) — re-synced across all five version surfaces.
 - The `COOLSIES` log tag was missing from the private-log mirror (and the logger's documented tag list) — every joke/8-ball/game operation now reaches the bot-logs channel.
 - Two hardcoded `>` strings survived in user-facing text (`calc` usage reply, `afk` details) — now prefix-dynamic.
 - `/bot` footer pointed at `/changelog`, which no longer exists — now points at the prefix command.
-- Dead imports pruned (rate, suggest, help); `suggest` now actually logs to the SUGGEST feed like every other command.
+- Dead imports pruned across nine files (rate, suggest, help, setnick, slowmode, purge, warn); `suggest` now actually logs to the SUGGEST feed like every other command.
 - **`lib/collection.ts`**: the joke and 8-ball management families (add/list/remove/edit/enable/disable — ~150 duplicated lines each) unified into one shared, developer-gated handler factory. One implementation, identical validation, sanitize-then-truncate, and error text everywhere; both commands plug in a service + nouns.
 
 ### The policy, enforced by the loader
