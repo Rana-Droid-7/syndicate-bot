@@ -17,6 +17,7 @@ import { cooldowns } from "../lib/cooldowns.js";
 import {
   mapErrorToReply,
 } from "../lib/errors.js";
+import { UserInputError, ContextError, PermissionError } from "../lib/errors.js";
 import { errorDetail } from "../lib/safeError.js";
 import { afkService } from "../services/afk.js";
 import { log } from "../core/logger.js";
@@ -170,6 +171,12 @@ const event: BotEvent<"messageCreate"> = {
         cooldowns.check(guildId, message.author.id, command.name ?? command.data?.name ?? "?", command.cooldownSeconds ?? 0);
         await command.prefixExecute(message, args);
       } catch (error) {
+        // A failure that happened BEFORE any effect (bad input, wrong
+        // place, missing permission) must not consume the cooldown —
+        // the user retries immediately and it must not cooldown-lock.
+        if (error instanceof UserInputError || error instanceof ContextError || error instanceof PermissionError) {
+          cooldowns.refund(guildId, message.author.id, command.name ?? command.data?.name ?? "?");
+        }
         await handleCommandError(message, error, `${config.prefix}${commandName}`);
       }
       return;
@@ -210,7 +217,7 @@ const event: BotEvent<"messageCreate"> = {
                   `I don't know a command called \`${config.prefix}${commandName}\`, but here's everything that starts with it:\n\n` +
                     list.description,
                 )
-                .setFooter({ text: `Tip: >help <command> shows detailed usage for any of them.` }),
+                .setFooter({ text: `Tip: ${config.prefix}help <command> shows detailed usage for any of them.` }),
             ],
           })
           .catch((err) => log.error("PREFIX", "Failed to send starts-with lookup", err));
@@ -220,13 +227,17 @@ const event: BotEvent<"messageCreate"> = {
       if (commandName.length >= MIN_SUGGESTION_LENGTH) {
         const suggestion = findClosestMatch(candidates, commandName);
         if (suggestion) {
-          log.info("PREFIX", `${config.prefix}${commandName} looks like a typo of "${suggestion.name ?? suggestion.data?.name ?? "?"}" — suggesting it.`);
+          const suggestedName = suggestion.name ?? suggestion.data?.name ?? "?";
+          // Prefix commands store usage prefix-free; render with the env prefix.
+          const suggestedUsage =
+            suggestion.surface === "prefix-only" ? `${config.prefix}${suggestion.usage}` : suggestion.usage;
+          log.info("PREFIX", `${config.prefix}${commandName} looks like a typo of "${suggestedName}" — suggesting it.`);
           await message
             .reply({
               embeds: [
                 errorEmbed(
-                  `I don't know a command called \`${config.prefix}${commandName}\` — did you mean **${suggestion.name ?? suggestion.data?.name ?? "?"}**?`,
-                ).addFields({ name: "Correct usage", value: `\`${suggestion.usage}\``, inline: false }),
+                  `I don't know a command called \`${config.prefix}${commandName}\` — did you mean **${suggestedName}**?`,
+                ).addFields({ name: "Correct usage", value: `\`${suggestedUsage}\``, inline: false }),
               ],
             })
             .catch((err) => log.error("PREFIX", "Failed to send typo suggestion", err));
