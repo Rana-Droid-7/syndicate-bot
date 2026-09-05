@@ -6,16 +6,6 @@ import { baseEmbed } from "../../lib/embeds.js";
 import { discordTimestamp, type TimestampStyle } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
 
-const STYLE_CHOICES: { name: string; value: TimestampStyle }[] = [
-  { name: "Relative (e.g. in 3 hours)", value: "R" },
-  { name: "Short Time (4:20 PM)", value: "t" },
-  { name: "Long Time (4:20:00 PM)", value: "T" },
-  { name: "Short Date (04/20/2026)", value: "d" },
-  { name: "Long Date (April 20, 2026)", value: "D" },
-  { name: "Short Date/Time (April 20, 2026 4:20 PM)", value: "f" },
-  { name: "Long Date/Time (Monday, April 20, 2026 4:20 PM)", value: "F" },
-];
-
 function buildResult(input: string, style: TimestampStyle) {
   const parsedDate = chrono.parseDate(input, new Date(), { forwardDate: true });
 

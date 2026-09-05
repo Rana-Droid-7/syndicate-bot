@@ -1,7 +1,7 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
-import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
+import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
 import { parseIntInRange } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";

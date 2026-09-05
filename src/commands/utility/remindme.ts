@@ -72,7 +72,7 @@ const command: Command = {
     const text = args.slice(1).join(" ");
     if (!text) throw new UserInputError("Tell me what to remind you about.");
 
-    const { date, delayMs } = parseAndValidate(timeInput);
+    const { date } = parseAndValidate(timeInput);
     // Escape first, truncate after — see MAX_TEXT_LENGTH note above.
     const safeText = truncate(safeBoldText(text), MAX_TEXT_LENGTH);
     // Escaping strips nothing but the input could still be entirely

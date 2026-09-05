@@ -11,7 +11,7 @@
     "start": "node dist/index.js",
     "deploy-commands": "tsx src/deploy-commands.ts",
     "test": "tsc && node --test --test-reporter=spec dist/tests/unit.test.js",
-    "verify": "tsc --noEmit && npm run build && node --test --test-reporter=spec dist/tests/unit.test.js && node verify_timer.mjs && node verify_lookup.mjs && node verify-dispatcher.mjs && node verify-integration.mjs"
+    "verify": "tsc --noEmit && npm run build && node --test --test-reporter=spec dist/tests/unit.test.js && node verify_timer.mjs && node verify_lookup.mjs && node verify-dispatcher.mjs && node verify-integration.mjs && node verify-embeds.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

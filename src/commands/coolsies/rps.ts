@@ -8,7 +8,8 @@ import {
   type Message,
 } from "discord.js";
 import type { Command } from "../../types/command.js";
-import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
+import { baseEmbed } from "../../lib/embeds.js";
+import { UserInputError } from "../../lib/errors.js";
 import { log } from "../../core/logger.js";
 
 const CHOICES = ["rock", "paper", "scissors"] as const;
@@ -38,12 +39,14 @@ const command: Command = {
   prefixExecute: async (message: Message, args: string[]) => {
     const raw = (args[0] ?? "").toLowerCase() as Choice;
 
-    // Invalid weapon -> clean error before anything else.
+    // Invalid weapon -> taxonomy error: the dispatcher renders it
+    // identically everywhere AND refunds the cooldown so an immediate
+    // retry isn't cooldown-locked.
     if (raw && !CHOICES.includes(raw)) {
-      await message.reply({
-        embeds: [errorEmbed(`\`${args[0]}\` isn't rock, paper, or scissors — try \`rps rock\`, or plain \`rps\` for buttons.`)],
-      });
-      return;
+      throw new UserInputError(
+        `\`${args[0]}\` isn't rock, paper, or scissors — try \`rps rock\`, or plain \`rps\` for buttons.`,
+        "rps [rock|paper|scissors]",
+      );
     }
 
     // ---- instant mode: weapon given ----

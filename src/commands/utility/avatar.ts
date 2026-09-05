@@ -7,6 +7,7 @@ import {
 } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
+import { UserInputError } from "../../lib/errors.js";
 import { mentionToId, isSnowflake } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
@@ -60,8 +61,7 @@ const command: Command = {
     const targetId = mentioned?.id ?? mentionToId(rawArg!);
     if (!isSnowflake(targetId)) {
       log.debug("PREFIX", `>avatar given invalid target: ${JSON.stringify(rawArg)}`);
-      await message.reply(`\`${rawArg}\` doesn't look like a valid user mention or ID.`);
-      return;
+      throw new UserInputError(`\`${rawArg}\` doesn't look like a valid user mention or ID.`, "avatar [@user]");
     }
 
     const user = await message.client.users.fetch(targetId).catch(() => null);

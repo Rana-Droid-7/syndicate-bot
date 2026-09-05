@@ -5,6 +5,7 @@ import { type Message,
 } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
+import { UserInputError } from "../../lib/errors.js";
 import { mentionToId, isSnowflake } from "../../lib/validation.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
@@ -141,14 +142,16 @@ const command: Command = {
   async prefixExecute(message: Message, args: string[]) {
     if (!message.guild) return;
 
-    // Same validation style as >avatar/>banner: an argument that
-    // isn't a mention or a plain ID gets a clear message, not a
-    // generic "couldn't find that member".
+    // An argument that isn't a mention or a plain ID is an input
+    // ERROR (taxonomy): the dispatcher renders it and refunds the
+    // cooldown — not a success-shaped internal reply.
     if (args.length > 0 && !message.mentions.users.size) {
       const candidate = mentionToId(args[0]);
       if (!isSnowflake(candidate)) {
-        await message.reply(`\`${args[0]}\` doesn't look like a valid user mention or ID.`);
-        return;
+        throw new UserInputError(
+          `\`${args[0]}\` doesn't look like a valid user mention or ID.`,
+          "userinfo [@user]",
+        );
       }
     }
 
@@ -156,6 +159,8 @@ const command: Command = {
     log.info("PREFIX", `>userinfo invoked by ${message.author.tag} (${message.author.id}) for target ${targetId}`);
     const member = await message.guild.members.fetch(targetId).catch(() => null);
 
+    // Not-found is an ANSWER (the input was fine), so it stays a
+    // normal reply.
     if (!member) {
       await message.reply("Couldn't find that member in this server.");
       return;

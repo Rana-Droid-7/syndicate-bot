@@ -349,7 +349,7 @@ console.log("\n=== COOLSIES ===");
   let rr = await runCommand(RP, ">rps rock");
   report("rps: instant round works", rr.ok && rr.replies.length > 0);
   rr = await runCommand(RP, ">rps banana");
-  report("rps: invalid weapon -> clean error", rr.ok && rr.replies.length > 0);
+  report("rps: invalid weapon throws UserInputError", !rr.ok && rr.error?.name === "UserInputError", `ok=${rr.ok} err=${rr.error?.name}`);
   rr = await runCommand(RP, ">rps paper");
   report("rps: paper instant round", rr.ok && rr.replies.length > 0);
 
@@ -460,7 +460,11 @@ console.log("\n=== INFO ===");
     [">snowflake 1300000000000000000'; DROP TABLE users;--", false, "SQL payload"],
   ]) {
     const res = await runCommand(SN, input);
-    report(`snowflake: ${label}`, ok ? res.ok : !res.ok || res.replies.length > 0);
+    // Invalid input now throws the taxonomy UserInputError (dispatcher
+    // renders + refunds cooldown) instead of a success-shaped reply.
+    report(`snowflake: ${label}`,
+      ok ? res.ok : !res.ok && res.error?.name === "UserInputError",
+      `ok=${res.ok} err=${res.error?.name}`);
   }
 
   const RO = "./dist/commands/utility/roll.js";
@@ -470,7 +474,10 @@ console.log("\n=== INFO ===");
     [">roll banana", false, "garbage"], [">roll 2d6+999", true, "big modifier"],
   ]) {
     const res = await runCommand(RO, input);
-    report(`roll: ${label ?? input}`, ok ? res.ok : !res.ok || res.replies.length > 0);
+    // Invalid notation throws the taxonomy UserInputError now.
+    report(`roll: ${label ?? input}`,
+      ok ? res.ok : !res.ok && res.error?.name === "UserInputError",
+      `ok=${res.ok} err=${res.error?.name}`);
   }
 
   const CA = "./dist/commands/utility/calculate.js";

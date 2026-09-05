@@ -180,6 +180,7 @@ const MIRRORED_TAGS = new Set([
   "MOD",
   "ADMIN",
   "OWNER",
+  "CONFIRM",
   "TIMER",
   "AFK",
   "WARN",

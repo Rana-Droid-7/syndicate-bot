@@ -1,6 +1,7 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
-import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
+import { baseEmbed } from "../../lib/embeds.js";
+import { UserInputError } from "../../lib/errors.js";
 import { log } from "../../core/logger.js";
 
 const DICE_REGEX = /^(\d{1,2})d(\d{1,4})([+-]\d{1,3})?$/i;
@@ -22,7 +23,7 @@ function rollDice(notation: string) {
   return { rolls, modifier, total, count, sides };
 }
 
-function buildEmbed(notation: string, result: NonNullable<ReturnType<typeof rollDice>>) {
+function buildEmbed(result: NonNullable<ReturnType<typeof rollDice>>) {
   const modifierText = result.modifier !== 0 ? ` ${result.modifier > 0 ? "+" : ""}${result.modifier}` : "";
   // Natural max rolls get bolded — the dice-roller's version of a crit.
   const rollsDisplay = result.rolls.map((r) => (r === result.sides ? `**${r}**` : `${r}`)).join(", ");
@@ -57,10 +58,12 @@ const command: Command = {
     log.info("PREFIX", `>roll invoked by ${message.author.tag} (${message.author.id}): ${notation}`);
     const result = rollDice(notation);
     if (!result) {
-      await message.reply({ embeds: [errorEmbed(INVALID_NOTATION_MESSAGE(notation))] });
-      return;
+      // Taxonomy error (not an internal reply): the dispatcher renders
+      // it identically everywhere AND refunds the cooldown so an
+      // immediate retry with fixed notation isn't cooldown-locked.
+      throw new UserInputError(INVALID_NOTATION_MESSAGE(notation), "roll [notation]");
     }
-    await message.reply({ embeds: [buildEmbed(notation, result)] });
+    await message.reply({ embeds: [buildEmbed(result)] });
   },
 };
 

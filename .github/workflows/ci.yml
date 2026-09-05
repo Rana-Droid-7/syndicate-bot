@@ -50,3 +50,6 @@ jobs:
 
       - name: Integration + attack harness
         run: node verify-integration.mjs
+
+      - name: Embed output verification (Discord hard limits)
+        run: node verify-embeds.mjs

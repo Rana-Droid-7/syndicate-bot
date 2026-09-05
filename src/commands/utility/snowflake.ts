@@ -1,7 +1,7 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
-import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
+import { UserInputError } from "../../lib/errors.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
 
@@ -19,15 +19,9 @@ function decodeSnowflake(id: string) {
   }
 }
 
+/** Validated snowflake -> unix ms. Caller MUST have checked decodeSnowflake(). */
 function buildEmbed(id: string) {
-  const ms = decodeSnowflake(id);
-
-  if (ms === null) {
-    return baseEmbed().setDescription(
-      `\`${id}\` doesn't look like a valid Discord ID/snowflake (should be 15-20 digits).`,
-    );
-  }
-
+  const ms = decodeSnowflake(id) as number;
   const unixSeconds = Math.floor(ms / 1000);
 
   return baseEmbed()
@@ -60,9 +54,17 @@ const command: Command = {
   async prefixExecute(message: Message, args: string[]) {
     const id = args[0]?.trim();
     log.info("PREFIX", `>snowflake invoked by ${message.author.tag} (${message.author.id}): ${id}`);
+    // Taxonomy errors (not internal replies): the dispatcher renders
+    // them identically everywhere AND refunds the cooldown so an
+    // immediate retry isn't cooldown-locked.
     if (!id) {
-      await message.reply(`Usage: \`${config.prefix}snowflake <id>\``);
-      return;
+      throw new UserInputError("Give me a Discord ID to decode.", "snowflake <id>");
+    }
+    if (!decodeSnowflake(id)) {
+      throw new UserInputError(
+        `\`${id}\` doesn't look like a valid Discord ID/snowflake (should be 15-20 digits).`,
+        "snowflake <id>",
+      );
     }
     await message.reply({ embeds: [buildEmbed(id)] });
   },
