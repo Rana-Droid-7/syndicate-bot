@@ -1,6 +1,7 @@
-import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import * as chrono from "chrono-node";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { discordTimestamp, type TimestampStyle } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
@@ -37,8 +38,8 @@ function buildResult(input: string, style: TimestampStyle) {
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">timestamp <time>",
+  surface: "prefix-only",
+  usage: "timestamp <time> [style]",
   description: "Turn plain-words time into a Discord timestamp tag.",
   details:
     "Describe a time in plain words — \"tomorrow 5pm\", \"in 3 hours\", \"dec 25 " +
@@ -47,45 +48,11 @@ const command: Command = {
     "event planning stops being a time-zone math headache. Pick a display style " +
     "(t/T/d/D/f/F/R) or take the default relative one.",
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("timestamp")
-    .setDescription("Generate a Discord timestamp tag that shows in each viewer's own local time.")
-    .addStringOption((opt) =>
-      opt
-        .setName("time")
-        .setDescription("A time, e.g. 'tomorrow 5pm', 'in 3 hours', 'Dec 25 2026 9am'")
-        .setRequired(true),
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName("style")
-        .setDescription("How the timestamp displays (defaults to Relative)")
-        .setRequired(false)
-        .addChoices(...STYLE_CHOICES.map((c) => ({ name: c.name, value: c.value }))),
-    ),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    const input = interaction.options.getString("time", true);
-    const style = (interaction.options.getString("style") as TimestampStyle) ?? "R";
-    log.info("CMD", `/timestamp invoked by ${interaction.user.tag} (${interaction.user.id}): time=${JSON.stringify(input)}, style=${style}`);
-
-    const embed = buildResult(input, style);
-
-    if (!embed) {
-      await interaction.reply({
-        content: `Couldn't understand \`${input}\` as a time. Try something like \`tomorrow 5pm\` or \`in 2 hours\`.`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    await interaction.reply({ embeds: [embed] });
-  },
 
   prefixNames: ["timestamp", "ts"],
   async prefixExecute(message: Message, args: string[]) {
     if (args.length === 0) {
-      await message.reply(`Usage: \`>timestamp <time> [style]\` — e.g. \`>timestamp tomorrow 5pm\` or \`>ts dec 25 D\` (styles: t T d D f F R)`);
+      await message.reply(`Usage: \`${config.prefix}timestamp <time> [style]\` — e.g. \`${config.prefix}ts tomorrow 5pm\` or \`${config.prefix}ts dec 25 D\` (styles: t T d D f F R)`);
       return;
     }
 

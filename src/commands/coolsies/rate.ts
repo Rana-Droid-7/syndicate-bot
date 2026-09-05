@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, MessageFlags, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
@@ -27,24 +27,16 @@ function buildEmbed(targetMention: string, targetName: string) {
 
 const command: Command = {
   category: "coolsies",
-  surface: "both",
-  usage: ">rate [@user]",
+  surface: "prefix-only",
+  name: "rate",
+  usage: "rate [@user]",
   description: "Rate anything (or anyone) out of 10 — purely for fun.",
   details:
     "Mention someone (or yourself) and the bot hands out a score out of 10 with " +
     "a matching star row and a completely scientific verdict. It's random every " +
     "time — don't take it personally. Works with mentions or bare user IDs.",
-  examples: [">rate @friend"],
+  examples: ["rate @friend"],
   cooldownSeconds: 5,
-  data: new SlashCommandBuilder()
-    .setName("rate")
-    .setDescription("Let the bot rate someone out of 10 (purely for fun).")
-    .addUserOption((o) => o.setName("target").setDescription("Who to rate (defaults to you)").setRequired(false)),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    const target = interaction.options.getUser("target") ?? interaction.user;
-    await interaction.reply({ embeds: [buildEmbed(target.toString(), target.username)] });
-  },
 
   prefixExecute: async (message: Message, args: string[]) => {
     if (!message.guild) return;

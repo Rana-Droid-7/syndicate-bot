@@ -1,17 +1,17 @@
-# Syndicate Bot — v0.5.3-beta
+# Syndicate Bot — v0.5.4-beta
 
 A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
 moderation, admin, and developer tiers — built with discord.js +
 TypeScript on a real SQL database.
 
-v0.5.3 is the **help & content overhaul**: every command now carries
-a proper one-line description plus a rich `>help <command>` guide
-(what it does, how it behaves, tips); category pages and detail pages
-rebuilt around them; `>help typo` gets a smart "did you mean". The
-8-ball grew a full management suite (`>8ball add/list/remove/edit/
-enable/disable`, exactly like `/joke`) with its own database-backed
-response pool — and both the joke and 8-ball collections ship
-preloaded.
+v0.5.4 is the **two-lane release**: one prefix, one rule — **public
+commands live exclusively on the prefix defined in your `.env`**
+(default `>`; change it to `!` and every menu, usage line, and
+suggestion follows instantly — nothing is hardcoded). **Slash is
+exclusively for moderation, admin, and developer tools**, where
+Discord's structured input and native permission gating belong. The
+prefix itself is boot-validated: exactly one character, no whitespace,
+never `/` — anything else refuses to start with a clear reason.
 
 ## Setup
 
@@ -58,30 +58,36 @@ first boot — no manual SQL step.
 
 | Surface | Who uses it | Why |
 |---|---|---|
-| `>` prefix | Everyone, for public commands | Visible in chat, works everywhere, zero Discord UI lag |
-| `/` slash | Moderators, admins, developers | Structured input (user pickers, durations) + Discord-native permission gating |
+| The `.env` prefix (default `>`) | Everyone, for ALL public commands | Visible in chat, works everywhere, zero Discord UI lag |
+| `/` slash | Moderators, admins, developers ONLY | Structured input (user pickers, durations) + Discord-native permission gating |
 
-Trying a slash-only command via `>` (e.g. `>kick`) gets a styled
-explanation with its correct usage — never silence. Unknown prefix
-input gets a **starts-with lookup** (`>se` → serverinfo, setnick,
-userinfo...) or a **typo suggestion** (`>halp` → "did you mean
-**>help**?").
+The split is **strict and loader-enforced**: a public command with a
+slash builder refuses to boot the bot; `deploy-commands` refuses to
+register one; privileged commands must be slash-only. The prefix
+itself is boot-validated — exactly one character, no whitespace,
+never `/` (which would collide with Discord's native slash).
 
-## Commands (v0.5.2-beta)
+Trying a slash-only command via the prefix (e.g. `>kick`) gets a
+styled explanation with its correct usage — never silence. Unknown
+prefix input gets a **starts-with lookup** (`>se` → serverinfo,
+setnick, userinfo...) or a **typo suggestion** (`>halp` → "did you
+mean **>help**?").
 
-### 🛠️ Utility — `>`, open to everyone
-`help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` — plus right-click **User Info** and **Avatar** context commands.
+## Commands (v0.5.4-beta)
 
-### 🎉 Coolsies — `>` and `/`, open to everyone
-`dice`, `coinflip`, `8ball`, `choose`, `random`, `rate`, `rps`, `joke say` — and `joke add/list/remove/edit/enable/disable` for developers (strictly trusted-ID-gated, never roles).
+### 🛠️ Utility — prefix only, open to everyone
+`help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `poll`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` (aliases: `calc`, `math`; `whois`, `ui`; `av`, `pfp`; `ts`, and more).
 
-### 🛡️ Moderation — slash-only, requires the matching Discord permission
+### 🎉 Coolsies — prefix only, open to everyone
+`dice`, `coinflip`, `8ball`, `choose`, `random`, `rate`, `rps`, `joke say` — and `joke add/list/remove/edit/enable/disable` for developers (strictly trusted-ID-gated, never roles). Same for `8ball`'s response pool management.
+
+### 🛡️ Moderation — slash only, requires the matching Discord permission
 `/kick`, `/ban`, `/timeout`, `/warn add|list|clear`, `/purge`
 
-### 🔧 Admin — slash-only, requires Administrator
+### 🔧 Admin — slash only, requires Administrator
 `/announce`, `/setnick`, `/slowmode`
 
-### 🔑 Developer — slash-only, trusted user IDs only
+### 🔑 Developer — slash only, trusted user IDs only
 `/boot` — DMs you a private Reboot/Shutdown/Cancel panel.
 
 ## Persistence

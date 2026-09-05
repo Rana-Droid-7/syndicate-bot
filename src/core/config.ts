@@ -10,13 +10,41 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/**
+ * The prefix must be exactly ONE usable character. Multi-character
+ * prefixes change how the dispatcher must tokenize (">>" vs "> >"),
+ * whitespace prefixes are untypeable in practice, and "/" collides
+ * with Discord's native slash commands. The bot refuses to start
+ * with a clear reason instead of misbehaving at runtime.
+ */
+function validatePrefix(raw: string | undefined): string {
+  const prefix = raw ?? ">";
+
+  if (prefix.length !== 1) {
+    throw new Error(
+      `PREFIX exceeds the character limit — it must be exactly ONE character (got "${prefix}", ${prefix.length} characters). ` +
+        `Edit PREFIX in your .env to a single character like >, !, ?, or $.`,
+    );
+  }
+  if (/\s/.test(prefix)) {
+    throw new Error(`PREFIX cannot be a whitespace character (got "${prefix}"). Pick something typeable like > or !.`);
+  }
+  if (prefix === "/") {
+    throw new Error(
+      `PREFIX cannot be "/" — that's reserved for Discord's native slash commands (moderation/admin/developer tools). Pick another character like > or !.`,
+    );
+  }
+
+  return prefix;
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Project root, whether running from src/core/ (tsx) or dist/core/ (compiled)
 const projectRoot = path.resolve(__dirname, "..", "..");
 
 export const config = {
   botName: "Syndicate Bot",
-  version: "0.5.3-beta",
+  version: "0.5.4-beta",
   author: "Ranajoy Roy",
 
   token: requireEnv("DISCORD_TOKEN"),
@@ -46,7 +74,7 @@ export const config = {
   // timer, etc. Mirrored from the central logger in batches.
   botLogChannelId: process.env.BOT_LOG_CHANNEL_ID || null,
 
-  prefix: process.env.PREFIX || ">",
+  prefix: validatePrefix(process.env.PREFIX),
 
   // Consistent brand color used across every embed
   embedColor: 0x5865f2, // Discord blurple

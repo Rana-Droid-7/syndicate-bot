@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { mentionToId, isSnowflake } from "../../lib/validation.js";
@@ -38,27 +38,15 @@ async function replyWithBanner(
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">banner [@user]",
+  surface: "prefix-only",
+  name: "banner",
+  usage: "banner [@user]",
   description: "Show a user's profile banner, if they have one.",
   details:
     "Fetches the profile banner behind someone's avatar at full size. Not " +
     "everyone has one — if they don't, the bot says so plainly. Works with " +
     "mentions, bare IDs, or yourself.",
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("banner")
-    .setDescription("Show a user's profile banner, if they have one.")
-    .addUserOption((opt) =>
-      opt.setName("target").setDescription("The user to look up (defaults to you)").setRequired(false),
-    ),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    await interaction.deferReply();
-    const target = interaction.options.getUser("target") ?? interaction.user;
-    log.info("CMD", `/banner invoked by ${interaction.user.tag} (${interaction.user.id}) for target ${target.id}`);
-    await replyWithBanner(target.id, interaction.client, (p) => interaction.editReply(p));
-  },
 
   prefixNames: ["banner"],
   async prefixExecute(message: Message, args: string[]) {

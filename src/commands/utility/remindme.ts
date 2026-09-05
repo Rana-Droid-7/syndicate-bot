@@ -1,6 +1,7 @@
 import { type Message } from "discord.js";
 import * as chrono from "chrono-node";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { ContextError, UserInputError } from "../../lib/errors.js";
 import { safeBoldText, truncate } from "../../lib/validation.js";
@@ -20,7 +21,7 @@ function parseAndValidate(timeInput: string): { date: Date; delayMs: number } {
   if (!parsedDate) {
     throw new UserInputError(
       `I couldn't understand \`${timeInput}\` as a time — try \`in 2 hours\` or \`tomorrow 9am\`.`,
-      `>remindme "<time>" <what>`,
+      `${config.prefix}remindme "<time>" <what>`,
     );
   }
   const delayMs = parsedDate.getTime() - Date.now();
@@ -35,7 +36,7 @@ const command: Command = {
   category: "utility",
   surface: "prefix-only",
   name: "remindme",
-  usage: '>remindme "<time>" <what to remember>',
+  usage: 'remindme "<time>" <what to remember>',
   description: "Set a reminder — natural language time, delivered here.",
   details:
     "Tell it when in quotes and what after: the time accepts natural language " +
@@ -43,7 +44,7 @@ const command: Command = {
     "bot pings you in the same channel when it's due. Reminders are persistent — " +
     "they survive restarts and crashes, and anything that came due while the bot " +
     "was down is delivered on next boot. Cap: 30 days out, 300 characters of text.",
-  examples: ['>remindme "in 2 hours" stretch my legs', '>remindme "tomorrow 9am" team meeting'],
+  examples: ['remindme "in 2 hours" stretch my legs', 'remindme "tomorrow 9am" team meeting'],
   cooldownSeconds: 5,
   prefixNames: ["remindme", "remind"],
 
@@ -57,7 +58,7 @@ const command: Command = {
     // >remindme "in 20 minutes" walk the dog
     //   -> ["in 20 minutes", "walk", "the", "dog"]
     if (args.length < 2) {
-      throw new UserInputError('Give me a quoted time and a reminder — `>remindme "in 20 minutes" walk the dog`.', '>remindme "<time>" <what>');
+      throw new UserInputError(`Give me a quoted time and a reminder — \`${config.prefix}remindme "in 20 minutes" walk the dog\`.`, 'remindme "<time>" <what>');
     }
 
     const timeInput = args[0];

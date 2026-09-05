@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { config } from "../../core/config.js";
@@ -14,6 +14,18 @@ interface ReleaseNotes {
 // recent few releases are listed here — Discord embeds have hard
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
+  {
+    version: "0.5.4-beta",
+    date: "2026-09-05",
+    highlights: [
+      "**One prefix, one rule**: public commands live on the prefix from your `.env` (default `>`); slash is exclusively for moderation, admin, and developer tools",
+      "**Change the prefix, everything follows**: set `PREFIX=!` and every menu, usage line, and suggestion flips instantly — nothing is hardcoded",
+      "**Prefix is validated at boot**: must be exactly one character, no whitespace, not `/` — or the bot refuses to start with a clear reason",
+      "**`poll` is prefix-native** — `poll \"question?\" \"opt1\" \"opt2\" [minutes]` with live bar-chart buttons",
+      "**`rps` button duel on the prefix** — plain `rps` opens the clickable duel",
+      "Right-click context commands retired; `both` surface removed from the type system",
+    ],
+  },
   {
     version: "0.5.3-beta",
     date: "2026-09-05",
@@ -147,21 +159,14 @@ function buildChangelogEmbed() {
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">changelog",
+  surface: "prefix-only",
+  name: "changelog",
+  usage: "changelog",
   description: "See what's new in the latest releases.",
   details:
     "The recent release notes, in-chat: version, date, and the highlights that " +
     "matter. The full history lives in the repository's CHANGELOG.md.",
   cooldownSeconds: 5,
-  data: new SlashCommandBuilder()
-    .setName("changelog")
-    .setDescription("See what's new in the latest Syndicate Bot releases."),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    log.info("CMD", `/changelog invoked by ${interaction.user.tag} (${interaction.user.id})`);
-    await interaction.reply({ embeds: [buildChangelogEmbed()] });
-  },
 
   prefixNames: ["changelog", "changes"],
   async prefixExecute(message: Message) {

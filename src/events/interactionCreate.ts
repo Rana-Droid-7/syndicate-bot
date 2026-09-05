@@ -1,6 +1,7 @@
 import { MessageFlags, type ChatInputCommandInteraction, type Interaction, type UserContextMenuCommandInteraction } from "discord.js";
 import type { BotEvent } from "../handlers/eventHandler.js";
 import type { SyndicateClient } from "../core/client.js";
+import { config } from "../core/config.js";
 import { baseEmbed, errorEmbed } from "../lib/embeds.js";
 import { sendDevLog } from "../lib/devlog.js";
 import { cooldowns } from "../lib/cooldowns.js";
@@ -37,7 +38,7 @@ const event: BotEvent<"interactionCreate"> = {
           embeds: [
             errorEmbed(
               `I don't recognize **/${commandInteraction.commandName}** — it may have been renamed or removed, or the update hasn't reached Discord yet (can take up to an hour).`,
-            ).setFooter({ text: "Public commands now live on the > prefix — try >help" }),
+            ).setFooter({ text: `Public commands now live on the ${config.prefix} prefix — try ${config.prefix}help` }),
           ],
           flags: MessageFlags.Ephemeral,
         })

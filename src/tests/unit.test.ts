@@ -14,6 +14,7 @@ import { parseQuotedArgs, isSnowflake, parseDuration, parseIntInRange, truncate,
 import { Cooldowns } from "../lib/cooldowns.js";
 import { rollDie } from "../commands/coolsies/dice.js";
 import { editDistance, findStartsWithMatches, findClosestMatch, type SuggestionCandidate } from "../lib/suggest.js";
+import { parsePollArgs } from "../commands/utility/poll.js";
 import type { Command } from "../types/command.js";
 
 // ---------- quoted-argument parsing ----------
@@ -159,11 +160,11 @@ test("editDistance basics", () => {
 });
 
 const candidates: SuggestionCandidate[] = [
-  { command: { name: "help", usage: ">help", surface: "prefix-only", prefixNames: ["help", "commands", "h"] } as Command, names: ["help", "commands", "h"] },
-  { command: { name: "suggest", usage: ">suggest", surface: "prefix-only", prefixNames: ["suggest"] } as Command, names: ["suggest"] },
-  { command: { name: "serverinfo", usage: ">serverinfo", surface: "both", prefixNames: ["serverinfo", "si"] } as Command, names: ["serverinfo", "si"] },
-  { command: { name: "boot", usage: "/boot", surface: "slash-only" } as Command, names: ["boot"] },
-  { command: { name: "dice", usage: ">dice", surface: "both", prefixNames: ["dice"] } as Command, names: ["dice"] },
+  { command: { name: "help", usage: "help", surface: "prefix-only", category: "utility", description: "d", prefixNames: ["help", "commands", "h"] } as Command, names: ["help", "commands", "h"] },
+  { command: { name: "suggest", usage: "suggest", surface: "prefix-only", category: "utility", description: "d", prefixNames: ["suggest"] } as Command, names: ["suggest"] },
+  { command: { name: "serverinfo", usage: "serverinfo", surface: "prefix-only", category: "utility", description: "d", prefixNames: ["serverinfo", "si"] } as Command, names: ["serverinfo", "si"] },
+  { command: { name: "boot", usage: "/boot", surface: "slash-only", category: "owner", description: "d" } as Command, names: ["boot"] },
+  { command: { name: "dice", usage: "dice", surface: "prefix-only", category: "coolsies", description: "d", prefixNames: ["dice"] } as Command, names: ["dice"] },
 ];
 
 test("starts-with matches via canonical and alias", () => {
@@ -296,6 +297,33 @@ test("rps: outcome table is correct", () => {
   // Determinism check across the full 3x3 table.
   const wins = CHOICES.flatMap((p) => CHOICES.map((b) => outcome(p, b))).filter((r) => r === "win");
   assert.equal(wins.length, 3, "exactly 3 winning pairs in a 3-choice table");
+});
+
+// ---------- poll argument parsing (v0.5.4 prefix surface) ----------
+test("poll args: quoted question and options, trailing minutes", () => {
+  const { question, options, minutes } = parsePollArgs(["best food?", "pizza", "pasta", "curry", "10"]);
+  assert.equal(question, "best food?");
+  assert.deepEqual(options, ["pizza", "pasta", "curry"]);
+  assert.equal(minutes, 10);
+});
+
+test("poll args: unquoted tokens, default duration", () => {
+  const { question, options, minutes } = parsePollArgs(["lunch?", "sushi", "ramen"]);
+  assert.equal(question, "lunch?");
+  assert.deepEqual(options, ["sushi", "ramen"]);
+  assert.equal(minutes, 5, "no trailing integer -> default 5 minutes");
+});
+
+test("poll args: rejects too few options / bad durations / too many options", () => {
+  assert.throws(() => parsePollArgs(["q?", "only-one"]));
+  assert.throws(() => parsePollArgs(["q?", "a", "b", "0"]), /between 1 and 60/);
+  assert.throws(() => parsePollArgs(["q?", "a", "b", "61"]));
+  // 11 options + question + minutes = 13 args
+  const tooMany = ["q?", ...Array.from({ length: 11 }, (_, i) => `opt${i}`), "5"];
+  assert.throws(() => parsePollArgs(tooMany), /Max 10 options/);
+  // The question itself isn't consumed as minutes even if numeric-looking
+  const q = parsePollArgs(["42", "a", "b"]);
+  assert.equal(q.question, "42");
 });
 
 // ---------- regression: reminder in-flight dedup guard semantics ----------

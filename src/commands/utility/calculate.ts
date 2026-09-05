@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { safeEvaluate } from "../../lib/safeMath.js";
@@ -22,8 +22,8 @@ async function buildEmbed(expression: string) {
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">calc <expression>",
+  surface: "prefix-only",
+  usage: "calc <expression>",
   description: "Evaluate math — from basic sums to sqrt, trig, and powers.",
   details:
     "A real calculator: arithmetic, parentheses, powers (`2^10`), `sqrt()`, `log()`, " +
@@ -31,22 +31,6 @@ const command: Command = {
     "and hard memory limits — nothing you type can hang or crash the bot. Results " +
     "over 500 characters are politely declined. 200 characters per expression.",
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("calculate")
-    .setDescription("Evaluate a math expression.")
-    .addStringOption((opt) =>
-      opt.setName("expression").setDescription("e.g. (3 + 4) * 2, sqrt(16), 2^10").setRequired(true).setMaxLength(200),
-    ),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    // Evaluation now runs in a worker thread and can take a moment
-    // (worker spawn overhead, or the full timeout if something's
-    // wrong) — defer so we don't miss Discord's 3-second ack window.
-    await interaction.deferReply();
-    const expression = interaction.options.getString("expression", true);
-    log.info("CMD", `/calculate invoked by ${interaction.user.tag} (${interaction.user.id}): ${JSON.stringify(expression)}`);
-    await interaction.editReply({ embeds: [await buildEmbed(expression)] });
-  },
 
   prefixNames: ["calculate", "calc", "math"],
   async prefixExecute(message: Message, args: string[]) {

@@ -63,15 +63,16 @@ function makeCandidates() {
 
   return defs.map((d) => ({
     command: {
-      // v0.5.0 Command metadata shape: usage + surface (slash-only
-      // commands have no builder; usage lives in metadata).
+      // v0.5.4 Command metadata shape: prefix-only commands carry a
+      // prefix-FREE usage string (the renderer adds the env prefix);
+      // slash-only ones keep the literal "/name".
       ...(d.prefix
         ? { data: { name: d.name, toJSON: () => ({ name: d.name, options: [] }) } }
         : {}),
       name: d.name,
       category: "utility",
-      usage: d.prefix ? `>${d.name}` : `/${d.name}`,
-      surface: d.prefix ? "both" : "slash-only",
+      usage: d.prefix ? d.name : `/${d.name}`,
+      surface: d.prefix ? "prefix-only" : "slash-only",
       prefixExecute: d.prefix ? async () => {} : undefined,
     },
     names: d.prefix ? [...new Set([d.name, ...d.aliases])] : [d.name],
@@ -155,9 +156,9 @@ await test("lookup description lists matches with usage", () => {
   const out = formatLookupDescription(m);
   assert(out.shown === m.length, "all shown");
   assert(out.total === m.length, "total matches");
-  assert(out.description.includes("/serverinfo"), "serverinfo in description");
+  assert(out.description.includes("serverinfo"), "serverinfo usage (prefix-free) in description");
   assert(out.description.includes("slash-only"), "slash-only note present for setnick");
-  assert(out.description.includes("`>serverinfo`"), "prefix note present for serverinfo");
+  assert(out.description.includes("`>serverinfo`"), "env-prefix badge present for serverinfo");
 });
 
 await test("lookup description caps at 15 entries with 'and N more'", () => {

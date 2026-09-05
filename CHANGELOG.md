@@ -1,6 +1,27 @@
 # Changelog
 
-All notable changes to Syndicate Bot are documented here. In-chat, use `>changelog` — it shows the most recent releases from this same history.
+All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
+
+## v0.5.4-beta — 2026-09-05 (strict two-lane surfaces + env-prefix everywhere)
+
+One prefix, one rule: **public commands live on the prefix (from `.env`, default `>`); slash is exclusively for moderation, admin, and developer tools.**
+
+### The policy, enforced by the loader
+- **Prefix validation at boot**: `PREFIX` must be exactly ONE character, not whitespace, not `/`. Anything else refuses to start with a clear reason ("PREFIX exceeds the character limit — it must be exactly ONE character..."). Change it to `!` (or `?`, `$`, whatever) in `.env` and every menu, usage line, typo suggestion, and footer follows instantly — nothing anywhere hardcodes `>`.
+- **Public categories (utility + coolsies) are prefix-ONLY.** The loader hard-fails any public command carrying a slash builder; `deploy-commands` separately refuses to register one even if the loader somehow missed it. All 21 public commands converted; the two right-click context commands (Avatar / User Info) removed — public commands left the Apps menu.
+- **Privileged categories (moderation/admin/owner) are slash-ONLY**, unchanged — Discord's structured input and native permission gating are part of their safety model.
+- **`CommandSurface` dropped `"both"`** — the type now encodes the policy: `prefix-only | slash-only`.
+
+### Prefix-free metadata, rendered live
+- Every command's `usage` and `examples` are now stored **prefix-free** (loader-enforced — a `>`-prefixed usage string is a boot error). The help system, typo suggestions, and category pages render them with the live `config.prefix`, so the entire help surface flips with one `.env` edit. User-facing error messages inside commands were swept for hardcoded `>` too — all dynamic now.
+
+### Rebuilt on the prefix
+- **`poll` is prefix-native now**: `poll "question?" "opt1" "opt2" [minutes]` (quoted, multi-word friendly) or `poll lunch sushi ramen` (fast, single-word). Same live bar chart, one-vote-per-person buttons, auto-close with final tallies, 1–60 minutes. The 15-minute interaction-token trap is structurally gone — it edits via the bot token from the start.
+- **`rps` button duel moved to the prefix**: plain `rps` opens the clickable duel (invoker-only buttons, 30s window); `rps rock` stays instant.
+- **`joke` and `8ball`** are prefix-only — full management suites intact, developer-gated by trusted user IDs.
+
+### Tests & harnesses
+- 3 new unit tests for `parsePollArgs` (quoted/unquoted shapes, duration bounds, the "question that looks like a number" edge); suite at 37. Lookup-harness mocks updated to the new metadata shape. Full loop green: tsc clean, 37/37 unit, 111/111 integration, 24/24 lookup, dispatcher edge-cases all safe, timer 3/3.
 
 ## v0.5.3-beta — 2026-09-05 (help & content overhaul)
 

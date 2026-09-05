@@ -1,11 +1,9 @@
 import {
-  SlashCommandBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
   MessageFlags,
-  type ChatInputCommandInteraction,
   type ButtonInteraction,
   type Message,
 } from "discord.js";
@@ -26,26 +24,51 @@ function outcome(player: Choice, bot: Choice): "win" | "lose" | "draw" {
 
 const command: Command = {
   category: "coolsies",
-  surface: "both",
-  usage: ">rps [rock|paper|scissors]",
+  surface: "prefix-only",
+  name: "rps",
+  usage: "rps [rock|paper|scissors]",
   description: "Rock Paper Scissors — instant, or with buttons.",
   details:
-    "On the prefix: pick your weapon and it's settled instantly (`>rps rock`) — " +
-    "or omit it and the bot picks for you. On slash: a button duel with a 30-second " +
-    "window where only YOUR clicks count. Either way, one round, one winner, no " +
-    "crying about lag.",
-  examples: [">rps rock", ">rps"],
+    "Two ways to play. Pick your weapon and it's settled instantly (`rps rock`) — " +
+    "or type plain `rps` for a button duel: a 30-second window where only YOUR " +
+    "clicks count. Either way, one round, one winner, no crying about lag.",
+  examples: ["rps rock", "rps"],
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("rps")
-    .setDescription("Rock Paper Scissors — instant, or with buttons."),
 
-  async execute(interaction: ChatInputCommandInteraction) {
-    // Slash surface: button duel against the bot. Only the invoker's
-    // clicks count — anyone else gets a private "not yours" note.
+  prefixExecute: async (message: Message, args: string[]) => {
+    const raw = (args[0] ?? "").toLowerCase() as Choice;
+
+    // Invalid weapon -> clean error before anything else.
+    if (raw && !CHOICES.includes(raw)) {
+      await message.reply({
+        embeds: [errorEmbed(`\`${args[0]}\` isn't rock, paper, or scissors — try \`rps rock\`, or plain \`rps\` for buttons.`)],
+      });
+      return;
+    }
+
+    // ---- instant mode: weapon given ----
+    if (raw) {
+      const bot = CHOICES[Math.floor(Math.random() * CHOICES.length)];
+      const result = outcome(raw, bot);
+      const verdict =
+        result === "win" ? "🎉 **You win!**" : result === "lose" ? "😅 **I win!**" : "🤝 **Draw!**";
+      log.debug("COOLSIES", `rps: ${message.author.id} picked ${raw}, bot rolled ${bot} -> ${result}`);
+      await message.reply({
+        embeds: [
+          baseEmbed()
+            .setTitle("✊ 🖐 ✌️ Rock Paper Scissors")
+            .setDescription(
+              `You: ${EMOJI[raw]} **${raw}**\nMe: ${EMOJI[bot]} **${bot}**\n\n${verdict}`,
+            ),
+        ],
+      });
+      return;
+    }
+
+    // ---- button mode: no weapon given ----
     const embed = baseEmbed()
       .setTitle("✊ 🖐 ✌️ Rock Paper Scissors")
-      .setDescription(`${interaction.user}, pick your weapon — 30 seconds, one round.`);
+      .setDescription(`${message.author}, pick your weapon — 30 seconds, one round.`);
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("rps-rock").setLabel("Rock").setEmoji("🪨").setStyle(ButtonStyle.Primary),
@@ -53,14 +76,9 @@ const command: Command = {
       new ButtonBuilder().setCustomId("rps-scissors").setLabel("Scissors").setEmoji("✂️").setStyle(ButtonStyle.Primary),
     );
 
-    const response = await interaction.reply({
-      embeds: [embed],
-      components: [row],
-      withResponse: true,
-    });
-    const message = response.resource!.message!;
+    const sent = await message.reply({ embeds: [embed], components: [row] });
 
-    const collector = message.createMessageComponentCollector({
+    const collector = sent.createMessageComponentCollector({
       componentType: ComponentType.Button,
       time: 30_000,
       max: 1,
@@ -68,10 +86,10 @@ const command: Command = {
       // collect handler — with max:1, a stranger's click would
       // otherwise consume the invoker's only slot and lock the game.
       // Filter rejections never count toward max.
-      filter: async (i) => {
-        if (i.user.id !== interaction.user.id) {
+      filter: async (i: ButtonInteraction) => {
+        if (i.user.id !== message.author.id) {
           await i
-            .reply({ content: "This game isn't yours — run `/rps` yourself!", flags: MessageFlags.Ephemeral })
+            .reply({ content: "This game isn't yours — run the rps command yourself!", flags: MessageFlags.Ephemeral })
             .catch(() => null);
           return false;
         }
@@ -83,7 +101,6 @@ const command: Command = {
       const player = i.customId.replace("rps-", "") as Choice;
       const bot = CHOICES[Math.floor(Math.random() * CHOICES.length)];
       const result = outcome(player, bot);
-
       const verdict =
         result === "win" ? "🎉 **You win!**" : result === "lose" ? "😅 **I win!**" : "🤝 **Draw!**";
 
@@ -110,42 +127,12 @@ const command: Command = {
       const disabled = new ActionRowBuilder<ButtonBuilder>().addComponents(
         row.components.map((b) => ButtonBuilder.from(b).setDisabled(true)),
       );
-      await message
+      await sent
         .edit({
-          embeds: [embed.setDescription("⌛ Round expired — run `/rps` for a rematch.")],
+          embeds: [embed.setDescription("⌛ Round expired — run the rps command for a rematch.")],
           components: [disabled],
         })
         .catch(() => null);
-    });
-  },
-
-  prefixNames: ["rps", "rockpaperscissors"],
-  async prefixExecute(message: Message, args: string[]) {
-    // Prefix surface: instant round, argument picks the weapon.
-    const raw = (args[0] ?? "").toLowerCase() as Choice;
-    if (raw && !CHOICES.includes(raw)) {
-      await message.reply({
-        embeds: [errorEmbed(`\`${args[0]}\` isn't rock, paper, or scissors — try \`>rps rock\`.`)],
-      });
-      return;
-    }
-
-    const player: Choice = raw || CHOICES[Math.floor(Math.random() * CHOICES.length)];
-    const bot = CHOICES[Math.floor(Math.random() * CHOICES.length)];
-    const result = outcome(player, bot);
-    const verdict =
-      result === "win" ? "🎉 **You win!**" : result === "lose" ? "😅 **I win!**" : "🤝 **Draw!**";
-
-    log.debug("COOLSIES", `rps: ${message.author.id} picked ${player}, bot rolled ${bot} -> ${result}`);
-    await message.reply({
-      embeds: [
-        baseEmbed()
-          .setTitle("✊ 🖐 ✌️ Rock Paper Scissors")
-          .setDescription(
-            `You: ${EMOJI[player]} **${player}**\nMe: ${EMOJI[bot]} **${bot}**\n\n${verdict}\n` +
-              `_Buttons too: try /rps for the clickable version._`,
-          ),
-      ],
     });
   },
 };

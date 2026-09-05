@@ -14,13 +14,13 @@ export type SlashCommandData =
   | SlashCommandSubcommandsOnlyBuilder;
 
 /**
- * Where a command is available. v0.5.0's rule: public commands live
- * on the `>` prefix (slash optional where structured input genuinely
- * helps), sensitive commands (moderation/admin/developer) are
- * slash-ONLY — structured input plus Discord's native permission
- * gating.
+ * Where a command is available. The v0.5.4 policy is strict:
+ * public commands (utility, coolsies) are prefix-ONLY; sensitive
+ * commands (moderation, admin, developer) are slash-ONLY — Discord's
+ * structured input plus native permission gating are part of their
+ * safety model. "both" no longer exists in the policy.
  */
-export type CommandSurface = "prefix-only" | "slash-only" | "both";
+export type CommandSurface = "prefix-only" | "slash-only";
 
 export type CommandCategory = "utility" | "coolsies" | "moderation" | "admin" | "owner";
 

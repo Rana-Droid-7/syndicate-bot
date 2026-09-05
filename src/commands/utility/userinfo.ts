@@ -1,7 +1,4 @@
-import { MessageFlags,
-  SlashCommandBuilder,
-  type ChatInputCommandInteraction,
-  type Message,
+import { type Message,
   type GuildMember,
   type User,
   type UserFlags,
@@ -129,8 +126,8 @@ export async function buildUserInfoEmbed(member: GuildMember): Promise<{ embed: 
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">userinfo [@user]",
+  surface: "prefix-only",
+  usage: "userinfo [@user]",
   description: "Full profile on any member — badges, roles, dates, banner.",
   details:
     "Everything about a member in one card: account and server-join dates (as " +
@@ -138,30 +135,6 @@ const command: Command = {
     "status, and their profile banner when they have one. Works with mentions, " +
     "bare IDs, or yourself.",
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("userinfo")
-    .setDescription("Show info about a server member.")
-    .addUserOption((opt) =>
-      opt.setName("target").setDescription("The member to look up (defaults to you)").setRequired(false),
-    ),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    if (!interaction.guild) {
-      await interaction.reply({ content: "This command only works in a server.", flags: MessageFlags.Ephemeral });
-      return;
-    }
-
-    const targetUser = interaction.options.getUser("target") ?? interaction.user;
-    log.info("CMD", `/userinfo invoked by ${interaction.user.tag} (${interaction.user.id}) for target ${targetUser.id}`);
-    const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-
-    if (!member) {
-      await interaction.reply({ content: "Couldn't find that member in this server.", flags: MessageFlags.Ephemeral });
-      return;
-    }
-
-    await interaction.reply({ embeds: [(await buildUserInfoEmbed(member)).embed] });
-  },
 
   prefixNames: ["userinfo", "whois", "ui"],
   async prefixExecute(message: Message, args: string[]) {

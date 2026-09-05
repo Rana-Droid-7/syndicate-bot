@@ -118,21 +118,12 @@ export function findClosestMatch(candidates: SuggestionCandidate[], input: strin
 function formatMatchLine(match: StartsWithMatch): string {
   const cmd = match.command;
   const name = cmd.name ?? cmd.data?.name ?? "unknown";
-  const usage = cmd.usage;
+  const isSlash = cmd.surface === "slash-only";
+  // Prefix commands store usage prefix-free; render with the env prefix.
+  const usage = isSlash ? cmd.usage : `${config.prefix}${cmd.usage}`;
+  const surfaceNote = isSlash ? "slash-only" : `\`${config.prefix}${name}\``;
 
-  let surfaceNote: string;
-  if (cmd.surface === "slash-only") {
-    surfaceNote = "slash-only";
-  } else if (cmd.surface === "prefix-only") {
-    surfaceNote = `\`${config.prefix}${name}\``;
-  } else {
-    // "both" — prefer the name the user was actually typing toward
-    // (an alias like "about" for bot when the input was "ab").
-    const display = match.matched.find((n) => n === name) ?? match.matched[0] ?? name;
-    surfaceNote = `\`${config.prefix}${display}\` or /${name}`;
-  }
-
-  const badge = cmd.surface === "slash-only" ? `**/${name}**` : `**${config.prefix}${name}**`;
+  const badge = isSlash ? `**/${name}**` : `**${config.prefix}${name}**`;
   return `• ${badge} \`${usage}\` · ${surfaceNote}`;
 }
 

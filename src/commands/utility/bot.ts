@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, version as djsVersion, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { version as djsVersion, type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { formatDuration, formatBytes } from "../../lib/format.js";
@@ -40,23 +40,14 @@ function buildBotInfoPayload(client: SyndicateClient) {
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">bot",
+  surface: "prefix-only",
+  usage: "bot",
   description: "Everything about the bot — version, uptime, stats, invite.",
   details:
     "The bot's ID card: current version, uptime, memory usage, server and member " +
     "counts, the library stack it runs on, and who built it. Includes an invite " +
     "button if you want it in your own server.",
   cooldownSeconds: 5,
-  data: new SlashCommandBuilder()
-    .setName("bot")
-    .setDescription("Info about Syndicate Bot: version, uptime, credits, and more."),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    const client = interaction.client as SyndicateClient;
-    log.info("CMD", `/bot invoked by ${interaction.user.tag} (${interaction.user.id})`);
-    await interaction.reply(buildBotInfoPayload(client));
-  },
 
   prefixNames: ["bot", "botinfo", "about"],
   async prefixExecute(message: Message) {

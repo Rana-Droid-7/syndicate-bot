@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { log } from "../../core/logger.js";
@@ -7,25 +7,13 @@ const FACES = ["Heads", "Tails"] as const;
 
 const command: Command = {
   category: "coolsies",
-  surface: "both",
-  usage: ">coinflip",
+  surface: "prefix-only",
+  name: "coinflip",
+  usage: "coinflip",
   description: "Flip a coin — heads or tails.",
-  details:
-    "The classic 50/50. One flip, one answer, zero ceremony. Settle it the " +
-    "old-fashioned way.",
-  examples: [">coinflip"],
+  details: "The classic 50/50. One flip, one answer, zero ceremony. Settle it the old-fashioned way.",
+  examples: ["coinflip"],
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("coinflip")
-    .setDescription("Flip a coin."),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    const result = FACES[Math.floor(Math.random() * FACES.length)];
-    log.debug("COOLSIES", `Coinflip: ${result}`);
-    await interaction.reply({
-      embeds: [baseEmbed().setTitle("🪙 Flipping...").setDescription(`🪙 It's **${result}**!`)],
-    });
-  },
 
   prefixExecute: async (message: Message) => {
     const result = FACES[Math.floor(Math.random() * FACES.length)];

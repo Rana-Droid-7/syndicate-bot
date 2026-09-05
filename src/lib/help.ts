@@ -160,10 +160,13 @@ export function buildCategoryEmbed(client: SyndicateClient, category: CommandCat
   for (const command of shown) {
     const cmd = command as Command;
     const name = commandName(command);
-    const fieldTitle = "contextMenu" in command ? `${name} (right-click)` : cmd.surface === "slash-only" ? `/${name}` : `${config.prefix}${name}`;
+    const isSlash = cmd.surface === "slash-only";
+    const fieldTitle = "contextMenu" in command ? `${name} (right-click)` : isSlash ? `/${name}` : `${config.prefix}${name}`;
+    // Prefix commands store usage prefix-free; render with the env prefix.
+    const usage = isSlash ? cmd.usage : `${config.prefix}${cmd.usage}`;
     embed.addFields({
       name: fieldTitle,
-      value: `${cmd.description}\n\`${cmd.usage}\``,
+      value: `${cmd.description}\n\`${usage}\``,
       inline: false,
     });
   }
@@ -220,13 +223,18 @@ export function buildCommandDetailEmbed(
 
   const typedName = cmd.surface === "slash-only" ? `/${name}` : `${config.prefix}${name}`;
 
+  // Prefix commands store usage/examples prefix-FREE (loader-enforced);
+  // render them with the env prefix so PREFIX=! in .env flips every
+  // help display at once. Slash usage lines are literal command names.
+  const render = (line: string) => (cmd.surface === "slash-only" ? line : `${config.prefix}${line}`);
+
   const embed = baseEmbed()
     .setColor(meta.color)
     .setTitle(`${meta.emoji} ${typedName}`)
     .setDescription(cmd.details ?? cmd.description);
 
   embed.addFields(
-    { name: "Usage", value: `\`${cmd.usage}\``, inline: false },
+    { name: "Usage", value: `\`${render(cmd.usage)}\``, inline: false },
     { name: "Category", value: `${meta.emoji} ${meta.label}`, inline: true },
     { name: "Available as", value: surfaceBadge(command), inline: true },
   );
@@ -242,7 +250,7 @@ export function buildCommandDetailEmbed(
   if (cmd.examples && cmd.examples.length > 0) {
     embed.addFields({
       name: "Examples",
-      value: cmd.examples.map((e) => `\`${e}\``).join("\n"),
+      value: cmd.examples.map((e) => `\`${render(e)}\``).join("\n"),
       inline: false,
     });
   }

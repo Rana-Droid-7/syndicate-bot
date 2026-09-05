@@ -1,4 +1,4 @@
-import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { log } from "../../core/logger.js";
@@ -40,8 +40,8 @@ const INVALID_NOTATION_MESSAGE = (notation: string) =>
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">roll [notation]",
+  surface: "prefix-only",
+  usage: "roll [notation]",
   description: "Roll dice with standard notation (2d6+3).",
   details:
     "Full dice notation for tabletop and games: `<count>d<sides>` with an optional " +
@@ -49,25 +49,6 @@ const command: Command = {
     "are bolded like crits, and the total is summed. Up to 20 dice, 2–9999 sides. " +
     "No notation? Plain 1d6.",
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("roll")
-    .setDescription("Roll dice using standard notation (e.g. 2d6, 1d20+5).")
-    .addStringOption((opt) =>
-      opt.setName("dice").setDescription("Dice notation, e.g. '2d6' or '1d20+5'").setRequired(false),
-    ),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    const notation = interaction.options.getString("dice") ?? "1d6";
-    log.info("CMD", `/roll invoked by ${interaction.user.tag} (${interaction.user.id}): ${notation}`);
-    const result = rollDice(notation);
-    if (!result) {
-      // Errors stay ephemeral — they're only useful to the person
-      // who typo'd the notation, not to the whole channel.
-      await interaction.reply({ embeds: [errorEmbed(INVALID_NOTATION_MESSAGE(notation))], flags: MessageFlags.Ephemeral });
-      return;
-    }
-    await interaction.reply({ embeds: [buildEmbed(notation, result)] });
-  },
 
   prefixNames: ["roll"],
   async prefixExecute(message: Message, args: string[]) {

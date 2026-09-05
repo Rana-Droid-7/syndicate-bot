@@ -163,8 +163,17 @@ const MIGRATIONS: MigrationFile[] = [
         usage_count INTEGER NOT NULL DEFAULT 0 CHECK (usage_count >= 0)
       );
       CREATE INDEX idx_jokes_enabled ON jokes (enabled, id);
-
-      CREATE TABLE eightball (
+    `,
+  },
+  {
+    // Self-contained on purpose: databases that already applied 001
+    // before the eightball suite existed get the table HERE, and
+    // fresh databases get it here too — 001 stays byte-identical to
+    // what shipped in v0.5.0 (append-only rule: never edit an
+    // applied migration).
+    name: "002_eightball_and_joke_seeds",
+    sql: `
+      CREATE TABLE IF NOT EXISTS eightball (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         content TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 300),
         created_by TEXT NOT NULL REFERENCES users(user_id),
@@ -173,15 +182,8 @@ const MIGRATIONS: MigrationFile[] = [
         enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
         usage_count INTEGER NOT NULL DEFAULT 0 CHECK (usage_count >= 0)
       );
-      CREATE INDEX idx_eightball_enabled ON eightball (enabled, id);
-    `,
-  },
-  {
-    name: "002_eightball_and_joke_seeds",
-    // Idempotent seed pass: runs on every boot, INSERT OR IGNORE keeps
-    // it a no-op once the rows exist. Seed content is credited to the
-    // author so the FK to users stays satisfied.
-    sql: `
+      CREATE INDEX IF NOT EXISTS idx_eightball_enabled ON eightball (enabled, id);
+
       INSERT OR IGNORE INTO users (user_id) VALUES ('syndicate-seed');
       INSERT OR IGNORE INTO eightball (content, created_by)
         SELECT 'It is certain.', 'syndicate-seed' WHERE NOT EXISTS (SELECT 1 FROM eightball);

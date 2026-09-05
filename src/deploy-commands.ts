@@ -29,6 +29,17 @@ async function main() {
       const command: AnyCommand | undefined = imported.default;
       // Prefix-only commands have no slash builder — they never deploy.
       if (command?.data) {
+        // v0.5.4 policy: slash deployment is for moderation/admin/
+        // owner ONLY. A public command with a slash builder would ship
+        // it to a surface the runtime loader rejects at boot —
+        // refuse here with the exact reason instead.
+        const category = command.category;
+        if (category === "utility" || category === "coolsies") {
+          throw new Error(
+            `Refusing to deploy /${command.data.name} (${categoryDir.name}/${file}): public commands are ` +
+              `prefix-ONLY (the env prefix). Slash is reserved for moderation, admin, and developer commands.`,
+          );
+        }
         // Duplicate command names make Discord's bulk PUT fail with a
         // cryptic REST error AFTER the whole payload is sent — catch
         // it locally instead, with the offending files named.

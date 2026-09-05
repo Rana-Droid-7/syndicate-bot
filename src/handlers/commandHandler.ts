@@ -3,10 +3,18 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import type { SyndicateClient } from "../core/client.js";
 import type { AnyCommand, Command, UserContextCommand } from "../types/command.js";
+import { config } from "../core/config.js";
 import { log } from "../core/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const commandsRoot = path.join(__dirname, "..", "commands");
+
+// The surface policy: PUBLIC commands (utility, coolsies) live on the
+// env prefix exclusively; PRIVILEGED commands (moderation, admin,
+// owner) live on native slash exclusively — Discord's structured
+// input and permission gating are part of their safety model.
+const PREFIX_ONLY_CATEGORIES = new Set(["utility", "coolsies"]);
+const SLASH_ONLY_CATEGORIES = new Set(["moderation", "admin", "owner"]);
 
 /**
  * Walks src/commands/<category>/*.ts, imports each file's default
@@ -19,8 +27,8 @@ const commandsRoot = path.join(__dirname, "..", "commands");
  * bot that doesn't boot.
  *
  * Canonical name resolution:
- *  - slash/context commands: data.name
  *  - prefix-only commands: explicit `name` ?? first prefixName
+ *  - slash/context commands: data.name
  */
 export async function loadCommands(client: SyndicateClient): Promise<void> {
   const categories = readdirSync(commandsRoot, { withFileTypes: true }).filter((d) => d.isDirectory());
@@ -58,6 +66,26 @@ export async function loadCommands(client: SyndicateClient): Promise<void> {
         const hasPrefix = typeof cmd.prefixExecute === "function";
         const hasData = !!cmd.data;
 
+        // ---- surface policy (v0.5.4): strict two-lane split ----
+        if (PREFIX_ONLY_CATEGORIES.has(cmd.category)) {
+          if (hasSlash || hasData) {
+            throw new Error(
+              `Command "${cmd.name ?? cmd.data?.name ?? "?"}" (${categoryDir.name}/${file}) is in a public category — ` +
+                `public commands are prefix-ONLY. Remove the slash builder (data) and execute().`,
+            );
+          }
+          if (cmd.surface !== "prefix-only") {
+            throw new Error(
+              `Command "${cmd.name ?? "?"}" (${categoryDir.name}/${file}): public commands must declare surface "prefix-only" — slash is reserved for moderation/admin/developer.`,
+            );
+          }
+        }
+        if (SLASH_ONLY_CATEGORIES.has(cmd.category) && cmd.surface !== "slash-only") {
+          throw new Error(
+            `Command "${cmd.data?.name ?? "?"}" (${categoryDir.name}/${file}): privileged commands are slash-ONLY — they need Discord's structured input and native permission gating.`,
+          );
+        }
+
         if (!cmd.usage || typeof cmd.usage !== "string" || cmd.usage.length === 0) {
           throw new Error(`Command in ${categoryDir.name}/${file} is missing its "usage" metadata.`);
         }
@@ -69,15 +97,31 @@ export async function loadCommands(client: SyndicateClient): Promise<void> {
             `Command "${cmd.data?.name ?? "?"}" (${categoryDir.name}/${file}): description must be a one-liner under 100 chars — put the long story in "details".`,
           );
         }
+        // Usage/examples must be prefix-FREE: every display site
+        // renders them with the env prefix, so PREFIX=! in .env
+        // flips the whole help system at once. Slash usage lines
+        // ("/kick ...") are fine as-is — they're literal command names.
+        if (cmd.surface === "prefix-only") {
+          if (cmd.usage.startsWith(config.prefix)) {
+            throw new Error(
+              `Command "${cmd.name ?? "?"}" (${categoryDir.name}/${file}): usage must be prefix-free ("${cmd.usage.replace(config.prefix, "")}") — the help system renders the env prefix itself.`,
+            );
+          }
+          if (cmd.examples?.some((e) => e.startsWith(config.prefix))) {
+            throw new Error(
+              `Command "${cmd.name ?? "?"}" (${categoryDir.name}/${file}): examples must be prefix-free — the help system renders the env prefix itself.`,
+            );
+          }
+        }
         if (!cmd.surface) {
           throw new Error(`Command in ${categoryDir.name}/${file} is missing its "surface" metadata.`);
         }
-        if ((cmd.surface === "slash-only" || cmd.surface === "both") && (!hasSlash || !hasData)) {
+        if (cmd.surface === "slash-only" && (!hasSlash || !hasData)) {
           throw new Error(
             `Command "${cmd.data?.name ?? "?"}" (${categoryDir.name}/${file}) declares surface "${cmd.surface}" but lacks execute() or data.`,
           );
         }
-        if ((cmd.surface === "prefix-only" || cmd.surface === "both") && !hasPrefix) {
+        if (cmd.surface === "prefix-only" && !hasPrefix) {
           throw new Error(
             `Command "${cmd.name ?? "?"}" (${categoryDir.name}/${file}) declares surface "${cmd.surface}" but has no prefixExecute().`,
           );

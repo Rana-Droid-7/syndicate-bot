@@ -1,6 +1,5 @@
 import {
   MessageFlags,
-  SlashCommandBuilder,
   ComponentType,
   PermissionFlagsBits,
   type ChatInputCommandInteraction,
@@ -82,53 +81,17 @@ function visibleCandidates(client: SyndicateClient, viewer: HelpViewer): Suggest
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">help [command]",
+  surface: "prefix-only",
+  usage: "help [command]",
   description: "The command center — browse categories or look up any command.",
   details:
     "Your map to everything. No argument opens the interactive command center: " +
     "a home card with every category, a select menu to browse them, and an invite " +
-    "button. Give it a command name (`>help remindme`) for the full guide — what " +
+    "button. Give it a command name (`help remindme`) for the full guide — what " +
     "it does, how it behaves, exact usage, aliases, examples, and cooldown. " +
     "Admin and developer sections only appear for people who can use them. " +
-    "Typos are forgiven: `>help halp` knows what you meant.",
+    "Typos are forgiven: `help halp` knows what you meant.",
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("help")
-    .setDescription("Browse Syndicate Bot's commands — or look up any command's exact usage.")
-    .addStringOption((opt) =>
-      opt
-        .setName("command")
-        .setDescription("A specific command to get detailed usage for, e.g. 'remindme'")
-        .setRequired(false),
-    ),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    const client = interaction.client as SyndicateClient;
-    const viewer: HelpViewer = {
-      userId: interaction.user.id,
-      isAdminHere: interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false,
-    };
-
-    // Detail page for /help <command>
-    const commandName = interaction.options.getString("command")?.trim().toLowerCase();
-    if (commandName) {
-      log.info("HELP", `/help detail requested by ${interaction.user.id}: "${commandName}"`);
-      const detail = buildCommandDetailEmbed(client, commandName, viewer);
-      if (!detail) {
-        await interaction.reply({
-          embeds: [buildUnknownCommandEmbed(client, viewer, commandName, "/")],
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      await interaction.reply({ embeds: [detail] });
-      return;
-    }
-
-    log.info("HELP", `/help menu opened by ${interaction.user.tag} (${interaction.user.id})`);
-    await sendHomeMenu(interaction, client, viewer);
-  },
 
   prefixNames: ["help", "commands", "h"],
   async prefixExecute(message: Message, args: string[]) {
@@ -156,49 +119,6 @@ const command: Command = {
   },
 };
 
-async function sendHomeMenu(
-  interaction: ChatInputCommandInteraction,
-  client: SyndicateClient,
-  viewer: HelpViewer,
-) {
-  const row = buildCategorySelectRow(client, viewer);
-  const inviteRow = buildInviteButtonRow();
-
-  const response = await interaction.reply({
-    embeds: [buildHelpHomeEmbed(client, viewer)],
-    components: [row, inviteRow],
-    withResponse: true,
-  });
-
-  const collector = response.resource!.message!.createMessageComponentCollector({
-    componentType: ComponentType.StringSelect,
-    time: COLLECTOR_TIMEOUT_MS,
-  });
-
-  collector.on("collect", async (i: StringSelectMenuInteraction) => {
-    try {
-      if (i.user.id !== interaction.user.id) {
-        await i.reply({ content: "This help menu isn't yours — run `/help` to get your own!", flags: MessageFlags.Ephemeral });
-        return;
-      }
-
-      const choice = i.values[0];
-      const embed =
-        choice === "home"
-          ? buildHelpHomeEmbed(client, viewer)
-          : buildCategoryEmbed(client, choice as CommandCategory);
-
-      await i.update({ embeds: [embed], components: [row, inviteRow] });
-    } catch (error) {
-      log.error("HELP", "Failed to handle select menu interaction", error);
-    }
-  });
-
-  collector.on("end", () => {
-    interaction.editReply({ components: [] }).catch(() => null);
-  });
-}
-
 async function sendHomeMenuPrefix(
   message: Message,
   client: SyndicateClient,
@@ -217,7 +137,7 @@ async function sendHomeMenuPrefix(
   collector.on("collect", async (i: StringSelectMenuInteraction) => {
     try {
       if (i.user.id !== message.author.id) {
-        await i.reply({ content: "This help menu isn't yours — run `>help` to get your own!", flags: MessageFlags.Ephemeral });
+        await i.reply({ content: "This help menu isn't yours — run the help command to get your own!", flags: MessageFlags.Ephemeral });
         return;
       }
 

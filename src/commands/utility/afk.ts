@@ -10,7 +10,7 @@ const command: Command = {
   category: "utility",
   surface: "prefix-only",
   name: "afk",
-  usage: ">afk [reason] · >afk off",
+  usage: "afk [reason] · afk off",
   description: "Mark yourself away — or clear it when you're back.",
   details:
     "Sets a per-server AFK status with an optional reason. Anyone mentioning you " +
@@ -18,7 +18,7 @@ const command: Command = {
     "one notice per channel per minute so it can't be weaponized). Clear it with " +
     "`>afk off` — or just send any message and the bot welcomes you back. AFK is " +
     "tracked per-guild and survives restarts.",
-  examples: [">afk getting coffee", ">afk off"],
+  examples: ["afk getting coffee", "afk off"],
   cooldownSeconds: 3,
   prefixNames: ["afk"],
 

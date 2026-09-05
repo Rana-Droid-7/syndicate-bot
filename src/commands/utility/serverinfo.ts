@@ -1,4 +1,4 @@
-import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction, type Message, type Guild } from "discord.js";
+import { type Message, type Guild } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { discordTimestamp } from "../../lib/format.js";
@@ -75,26 +75,14 @@ async function buildServerInfoEmbed(guild: Guild) {
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">serverinfo",
+  surface: "prefix-only",
+  usage: "serverinfo",
   description: "A snapshot of this server — members, boosts, channels, and more.",
   details:
     "The server's ID card: creation date, owner, member count, channel and role " +
     "counts, boost level with a progress bar to the next tier, verification " +
     "level, vanity invite, and the banner if it has one.",
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("serverinfo")
-    .setDescription("Show info about this server."),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    log.info("CMD", `/serverinfo invoked by ${interaction.user.tag} (${interaction.user.id}) in guild ${interaction.guildId}`);
-    if (!interaction.guild) {
-      await interaction.reply({ content: "This command only works in a server.", flags: MessageFlags.Ephemeral });
-      return;
-    }
-    await interaction.reply({ embeds: [await buildServerInfoEmbed(interaction.guild)] });
-  },
 
   prefixNames: ["serverinfo", "guildinfo", "si"],
   async prefixExecute(message: Message) {

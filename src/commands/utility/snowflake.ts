@@ -1,5 +1,6 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
@@ -44,8 +45,8 @@ function buildEmbed(id: string) {
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">snowflake <id>",
+  surface: "prefix-only",
+  usage: "snowflake <id>",
   description: "Decode any Discord ID to its creation date.",
   details:
     "Every Discord ID (user, server, channel, message, role) encodes the exact " +
@@ -53,25 +54,13 @@ const command: Command = {
     "timestamp — handy for spotting alt accounts and checking \"how old is this " +
     "server, really\".",
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("snowflake")
-    .setDescription("Decode a Discord ID (snowflake) to see when it was created.")
-    .addStringOption((opt) =>
-      opt.setName("id").setDescription("Any Discord ID — user, server, channel, message, etc.").setRequired(true),
-    ),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    const id = interaction.options.getString("id", true).trim();
-    log.info("CMD", `/snowflake invoked by ${interaction.user.tag} (${interaction.user.id}): ${id}`);
-    await interaction.reply({ embeds: [buildEmbed(id)] });
-  },
 
   prefixNames: ["snowflake", "decode"],
   async prefixExecute(message: Message, args: string[]) {
     const id = args[0]?.trim();
     log.info("PREFIX", `>snowflake invoked by ${message.author.tag} (${message.author.id}): ${id}`);
     if (!id) {
-      await message.reply("Usage: `>snowflake <id>`");
+      await message.reply(`Usage: \`${config.prefix}snowflake <id>\``);
       return;
     }
     await message.reply({ embeds: [buildEmbed(id)] });

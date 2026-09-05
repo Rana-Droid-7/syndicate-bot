@@ -1,9 +1,7 @@
 import {
-  SlashCommandBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  type ChatInputCommandInteraction,
   type Message,
   type User,
 } from "discord.js";
@@ -36,8 +34,9 @@ export async function buildAvatarButtonRow(user: User): Promise<ActionRowBuilder
 
 const command: Command = {
   category: "utility",
-  surface: "both",
-  usage: ">avatar [@user]",
+  surface: "prefix-only",
+  name: "avatar",
+  usage: "avatar [@user]",
   description: "Show anyone's avatar in full size.",
   details:
     "Pulls a user's avatar at full resolution with a direct link underneath — " +
@@ -45,19 +44,6 @@ const command: Command = {
     "argument (yourself). The button row includes a banner link too when the " +
     "user has one.",
   cooldownSeconds: 3,
-  data: new SlashCommandBuilder()
-    .setName("avatar")
-    .setDescription("Show a user's avatar in full size.")
-    .addUserOption((opt) =>
-      opt.setName("target").setDescription("The user to look up (defaults to you)").setRequired(false),
-    ),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    const user = interaction.options.getUser("target") ?? interaction.user;
-    log.info("CMD", `/avatar invoked by ${interaction.user.tag} (${interaction.user.id}) for target ${user.id}`);
-    const row = await buildAvatarButtonRow(user);
-    await interaction.reply({ embeds: [buildAvatarEmbed(user)], components: [row] });
-  },
 
   prefixNames: ["avatar", "av", "pfp"],
   async prefixExecute(message: Message, args: string[]) {

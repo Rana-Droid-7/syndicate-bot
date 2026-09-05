@@ -1,5 +1,6 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed, successEmbed } from "../../lib/embeds.js";
 import { ContextError, UserInputError } from "../../lib/errors.js";
 import { truncate, sanitizeEcho } from "../../lib/validation.js";
@@ -21,14 +22,14 @@ const command: Command = {
   category: "utility",
   surface: "prefix-only",
   name: "suggest",
-  usage: '>suggest "<your suggestion>"',
+  usage: 'suggest "<your suggestion>"',
   description: "Send a suggestion straight to the bot's developer.",
   details:
     "Have an idea for the bot? Wrap it in quotes and send it — it's logged with " +
     "your name, server, and a timestamp for review, and you get a confirmation " +
     "with the entry number. Suggestions persist in the database and a human-" +
     "readable export. 500 characters max, one idea per message.",
-  examples: ['>suggest "add a music command"'],
+  examples: ['suggest "add a music command"'],
   cooldownSeconds: 10,
   prefixNames: ["suggest", "suggestion"],
 
@@ -39,7 +40,7 @@ const command: Command = {
     const content = (args.join(" ") || "").trim();
 
     if (!content) {
-      throw new UserInputError('Wrap your suggestion in double quotes — `>suggest "add a music command"`.', '>suggest "<your suggestion>"');
+      throw new UserInputError(`Wrap your suggestion in double quotes — \`${config.prefix}suggest "add a music command"\`.`, 'suggest "<your suggestion>"');
     }
     if (content.length > MAX_LENGTH) {
       throw new UserInputError(`Suggestions cap at ${MAX_LENGTH} characters.`);
