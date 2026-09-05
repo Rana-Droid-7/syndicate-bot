@@ -53,9 +53,7 @@ function buildUnknownCommandEmbed(
         return `• **${typed}** — _${c.description}_`;
       })
       .join("\n");
-    return errorEmbed(`I don't know a command called \`${prefix}${query}\` — but these look close:`).setDescription(
-      `I don't know \`${prefix}${query}\`, but these look close:\n\n${lines}`,
-    );
+    return errorEmbed(`I don't know a command called \`${prefix}${query}\`, but these look close:\n\n${lines}`);
   }
 
   // 3) Nothing close — point at the menu.

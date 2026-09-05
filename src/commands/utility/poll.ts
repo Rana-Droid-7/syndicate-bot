@@ -10,6 +10,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { UserInputError } from "../../lib/errors.js";
+import { sanitizeEcho } from "../../lib/validation.js";
 
 import { log } from "../../core/logger.js";
 
@@ -122,14 +123,22 @@ const command: Command = {
 
   prefixExecute: async (message: Message, args: string[]) => {
     const { question, options, minutes } = parsePollArgs(args);
+
+    // Every other user-text command sanitizes before an embed is
+    // built — poll was the lone gap: the question/option text went
+    // raw into the embed title/description AND the button labels,
+    // letting @everyone render and invisible characters spoof labels.
+    const safeQuestion = sanitizeEcho(question);
+    const safeOptions = options.map((o) => sanitizeEcho(o));
+
     const durationMs = minutes * 60_000;
     const endUnix = Math.floor((Date.now() + durationMs) / 1000);
 
-    log.info("CMD", `poll by ${message.author.tag} (${message.author.id}): "${question}" with ${options.length} options for ${minutes}m`);
+    log.info("CMD", `poll by ${message.author.tag} (${message.author.id}): "${safeQuestion}" with ${safeOptions.length} options for ${minutes}m`);
 
     const votes = new Map<string, number>(); // userId -> option index
 
-    const buttons = options.map((opt, i) =>
+    const buttons = safeOptions.map((opt, i) =>
       new ButtonBuilder()
         .setCustomId(`poll-${i}`)
         .setLabel(opt.slice(0, 80))
@@ -139,7 +148,7 @@ const command: Command = {
     const rows = chunkRows(buttons);
 
     const sent = await message.reply({
-      embeds: [buildResultsEmbed(question, options, votes, false, endUnix)],
+      embeds: [buildResultsEmbed(safeQuestion, safeOptions, votes, false, endUnix)],
       components: rows,
     });
 
@@ -159,17 +168,17 @@ const command: Command = {
     collector.on("collect", async (i: ButtonInteraction) => {
       const optionIndex = Number(i.customId.split("-")[1]);
       votes.set(i.user.id, optionIndex);
-      log.info("CMD", `Poll vote: ${i.user.tag} (${i.user.id}) voted option ${optionIndex} ("${options[optionIndex]}") on "${question}"`);
+      log.info("CMD", `Poll vote: ${i.user.tag} (${i.user.id}) voted option ${optionIndex} ("${safeOptions[optionIndex]}") on "${safeQuestion}"`);
 
       updateChain = updateChain
         .then(async () => {
-          await i.update({ embeds: [buildResultsEmbed(question, options, votes, false, endUnix)] });
+          await i.update({ embeds: [buildResultsEmbed(safeQuestion, safeOptions, votes, false, endUnix)] });
         })
         .catch((error) => log.error("CMD", "Failed to update poll message after a vote", error));
     });
 
     collector.on("end", () => {
-      log.info("CMD", `Poll "${question}" closed with ${votes.size} total vote(s).`);
+      log.info("CMD", `Poll "${safeQuestion}" closed with ${votes.size} total vote(s).`);
       const disabledRows = rows.map((row) =>
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           row.components.map((b) => ButtonBuilder.from(b).setDisabled(true)),
@@ -180,7 +189,7 @@ const command: Command = {
       updateChain = updateChain
         .then(async () => {
           await sent.edit({
-            embeds: [buildResultsEmbed(question, options, votes, true, endUnix)],
+            embeds: [buildResultsEmbed(safeQuestion, safeOptions, votes, true, endUnix)],
             components: disabledRows,
           });
         })

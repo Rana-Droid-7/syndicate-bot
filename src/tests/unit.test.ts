@@ -192,7 +192,7 @@ test("regression: sanitizeEcho keeps the mention-breaker zero-width space", () =
   const out = sanitizeEcho("@everyone run");
   // The break must survive: "@\u200beveryone", NOT a clean "@everyone"
   assert.ok(out.includes("\u200b"));
-  assert.ok(!new RegExp("@everyone").test(out.replace(/\u200b/g, "")) === false || out.includes("@\u200b"));
+  assert.ok(out.startsWith("@\u200beveryone"), `expected the breaker right after @, got ${JSON.stringify(out.slice(0, 12))}`);
 });
 
 test("regression: escape-then-truncate stays within DB CHECK limits", () => {
@@ -241,25 +241,28 @@ test("regression: suggestion sanitize+truncate result fits the 500-char constrai
 // The M3 bug: "off" as the FIRST token was treated as the clear
 // subcommand, so ">afk off to lunch" cleared AFK instead of setting
 // that reason. The fix: off/clear is an intent only when it's the
-// WHOLE argument.
+// WHOLE argument. Mirrors afk.ts exactly: the first token is
+// LOWERCASED before the comparison, so "OFF"/"CLEAR" clear too.
 test("regression: afk 'off' intent detection only for the lone token", () => {
   const isClearIntent = (args: string[]) =>
-    args.length === 1 && (args[0] === "off" || args[0] === "clear");
+    args.length === 1 && (args[0].toLowerCase() === "off" || args[0].toLowerCase() === "clear");
   assert.ok(isClearIntent(["off"]));
   assert.ok(isClearIntent(["clear"]));
+  assert.ok(isClearIntent(["OFF"]), "the real command lowercases before comparing");
   assert.ok(!isClearIntent(["off", "to", "lunch"]), "'off to lunch' is a reason, not a toggle");
-  assert.ok(!isClearIntent(["OFF"]));
 });
 
 // ---------- regression: >choose option cap errors instead of silently dropping ----------
 // The m10 bug: slice(0, 10) quietly discarded extras. The fix throws
-// a UserInputError the dispatcher renders.
-test("regression: choose rejects more than 10 options instead of slicing", () => {
-  const MAX_OPTIONS = 10;
+// a UserInputError the dispatcher renders. Runs the REAL exported
+// validateOptions — not a replica.
+test("regression: choose rejects more than 10 options instead of slicing", async () => {
+  const { validateOptions } = await import("../commands/coolsies/choose.js");
   const tooMany = Array.from({ length: 12 }, (_, i) => `option${i + 1}`);
-  // Mirror of choose.ts validateOptions' new pre-check.
-  const throws = tooMany.length > MAX_OPTIONS;
-  assert.ok(throws, "12 options must be rejected, not sliced to 10");
+  assert.throws(() => validateOptions(tooMany), /cap is 10/);
+  // and the boundary itself passes
+  const ten = Array.from({ length: 10 }, (_, i) => `option${i + 1}`);
+  assert.deepEqual(validateOptions(ten).length, 10);
 });
 
 // ---------- rps game logic (shared by both surfaces) ----------
@@ -305,6 +308,64 @@ test("poll args: rejects too few options / bad durations / too many options", ()
   const q = parsePollArgs(["42", "a", "b"]);
   assert.equal(q.question, "42");
 });
+
+// ---------- regression: audit round fixes (v1.0.0 max-mode audit) ----------
+// C1: /warn list overflow must hide the OLDEST entries and keep the
+// NEWEST ones. The previous implementation sliced from the front of
+// the newest-first list — showing the oldest and hiding exactly the
+// recent warnings moderators need.
+test("regression: warn list overflow keeps the newest entries", async () => {
+  const { warningService } = await import("../services/warnings.js");
+  // Newest-FIRST array (the shape activeFor() returns): index 0 is the
+  // newest warning (W24, added last), index 24 the oldest (W00).
+  const newestFirst = Array.from({ length: 25 }, (_, i) => ({
+    id: 25 - i,
+    guild_id: "g",
+    user_id: "u",
+    moderator_id: "m",
+    reason: `W${String(24 - i).padStart(2, "0")} ${"x".repeat(160)}`,
+    created_unix_ms: 1_000_000 + (24 - i),
+    active: 1,
+  }));
+  const list = warningService.formatList(newestFirst as never[]);
+  assert.ok(list.shownCount < 25, "overflow path must actually trim");
+  assert.ok(list.description.includes("W24"), "the NEWEST warning must be shown");
+  assert.ok(!list.description.includes("W00"), "the OLDEST warning must be hidden");
+  // The single-entry fallback must show the newest, not the oldest.
+  const single = warningService.formatList(newestFirst.slice(0, 1) as never[]);
+  assert.ok(single.description.includes("W24"), "single-entry fallback shows the newest");
+});
+
+// H5: parseIntInRange must reject hex/scientific/underscore notation —
+// Number("0x10") === 16 let ">joke remove 0x10" delete joke #16.
+test("regression: parseIntInRange rejects hex/scientific/underscore input", () => {
+  assert.throws(() => parseIntInRange("0x10", 1, 100, "id"), /isn't a valid id/);
+  assert.throws(() => parseIntInRange("1e3", 1, 2000, "id"), /isn't a valid id/);
+  assert.throws(() => parseIntInRange("1_0", 1, 100, "id"), /isn't a valid id/);
+  // plain decimals and negatives still work
+  assert.equal(parseIntInRange("16", 1, 100, "id"), 16);
+  assert.equal(parseIntInRange("-5", -10, 10, "id"), -5);
+});
+
+// L6: a pre-effect failure must refund the cooldown — retrying a
+// typo immediately must not cooldown-lock the user.
+test("regression: cooldown refund clears the live hit", () => {
+  const cd = new Cooldowns();
+  cd.check("g", "u", "cmd", 60);
+  assert.throws(() => cd.check("g", "u", "cmd", 60), "sanity: hit is live");
+  cd.refund("g", "u", "cmd");
+  cd.check("g", "u", "cmd", 60); // must NOT throw after refund
+  // refunding an unknown key is a no-op
+  cd.refund("g", "other", "nope");
+});
+
+// C2-adjacent: sanitizeEcho strips the line/paragraph separators that
+// enable embed line-break injection.
+test("regression: sanitizeEcho strips U+2028/U+2029 line separators", () => {
+  assert.ok(!sanitizeEcho("a\u2028b\u2029c").includes("\u2028"));
+  assert.ok(!sanitizeEcho("a\u2028b\u2029c").includes("\u2029"));
+});
+
 
 // ---------- regression: reminder in-flight dedup guard semantics ----------
 // The M1 bug: deliver() read status='pending', awaited the network,

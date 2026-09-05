@@ -39,6 +39,15 @@ export const reminderRepository = {
     return getDb().prepare(`SELECT * FROM reminders WHERE status = 'pending' ORDER BY due_unix_ms`).all() as ReminderRow[];
   },
 
+  /** Pending reminders for one user in one guild (per-user cap check). */
+  pendingCountFor(guildId: string, userId: string): number {
+    return (
+      getDb()
+        .prepare(`SELECT COUNT(*) AS n FROM reminders WHERE guild_id = ? AND user_id = ? AND status = 'pending'`)
+        .get(guildId, userId) as { n: number }
+    ).n;
+  },
+
   get(id: number): ReminderRow | null {
     return (getDb().prepare(`SELECT * FROM reminders WHERE id = ?`).get(id) as ReminderRow | undefined) ?? null;
   },

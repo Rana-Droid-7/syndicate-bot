@@ -42,7 +42,7 @@ const command: Command = {
   },
 };
 
-function validateOptions(raw: string[]): string[] {
+export function validateOptions(raw: string[]): string[] {
   if (raw.length > MAX_OPTIONS) {
     throw new UserInputError(`That's ${raw.length} options — the cap is ${MAX_OPTIONS}. Drop the extras and try again.`);
   }

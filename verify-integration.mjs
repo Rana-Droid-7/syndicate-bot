@@ -678,8 +678,106 @@ console.log("\n=== REGRESSIONS (round 2) ===");
 }
 
 // ============================================================
-// FINAL
+// REGRESSIONS (max-mode audit round 3 — v1.0.0 fixes)
 // ============================================================
+console.log("\n=== REGRESSIONS (audit round 3) ===");
+{
+  const { getDb } = await import("./dist/database/client.js");
+  const gid = "999999999999999999";
+
+  // --- C1: /warn list overflow must keep the NEWEST warnings ---
+  const { warningService } = await import("./dist/services/warnings.js");
+  const warnUid = "121212121212121212";
+  // W00 added first ... W24 added last (newest). activeFor() returns newest-first.
+  for (let i = 0; i < 25; i++) warningService.add(gid, warnUid, "111111111111111111", `W${String(i).padStart(2, "0")} ${"x".repeat(160)}`);
+  const wList = warningService.formatList(warningService.activeFor(gid, warnUid));
+  report("warn list: overflow shows the NEWEST (W24), hides the OLDEST (W00)",
+    wList.description.includes("W24") && !wList.description.includes("W00"),
+    `shown=${wList.shownCount}/${wList.totalCount}`);
+  warningService.clearActive(gid, warnUid);
+
+  // --- C2: >changelog embed must stay under Discord's 6000-char cap ---
+  const changelogCmd = (await import("./dist/commands/utility/changelog.js")).default;
+  {
+    const myReplies = [];
+    const msg = makeMessage(">changelog");
+    msg.reply = async (p) => { myReplies.push(p); return { id: "x" }; };
+    msg.author = { tag: "t#1", id: "1" };
+    await changelogCmd.prefixExecute(msg, []);
+    const json = myReplies[0].embeds[0].toJSON();
+    let total = (json.title?.length ?? 0) + (json.description?.length ?? 0) + (json.footer?.text?.length ?? 0);
+    for (const f of json.fields ?? []) total += (f.name?.length ?? 0) + (f.value?.length ?? 0);
+    report("changelog: embed total under Discord's 6000-char cap",
+      total <= 6000 && (json.fields ?? []).length <= 25, `total=${total}`);
+  }
+
+  // --- C3: pruneOrphanedUsers must respect the eightball FK ---
+  {
+    const { ensureUser, pruneOrphanedUsers } = await import("./dist/repositories/shared.js");
+    const { eightBallRepository } = await import("./dist/repositories/eightball.js");
+    const ghost = "131313131313131313";
+    ensureUser(ghost);
+    eightBallRepository.add("response by ghost", ghost);
+    let prunedOk = true;
+    try { pruneOrphanedUsers(); } catch (e) { prunedOk = false; }
+    const survived = getDb().prepare("SELECT COUNT(*) AS n FROM users WHERE user_id = ?").get(ghost).n === 1;
+    report("prune: eightball-only user survives + no FK crash", prunedOk && survived);
+    getDb().prepare("DELETE FROM eightball WHERE created_by = ?").run(ghost);
+    getDb().prepare("DELETE FROM users WHERE user_id = ?").run(ghost);
+  }
+
+  // --- H5: strict parseInt — hex/scientific IDs must be rejected ---
+  {
+    const J = "./dist/commands/coolsies/joke.js";
+    const { jokeRepository } = await import("./dist/repositories/jokes.js");
+    const DEV = "111111111111111111";
+    jokeRepository.add("hex canary joke", DEV);
+    const canary = jokeRepository.list(1)[0];
+    let r = await runCommand(J, `>joke remove 0x${canary.id.toString(16)}`, { authorId: DEV });
+    const hexGotRejected = !r.ok || r.replies.length > 0;
+    const canaryStillThere = jokeRepository.get(canary.id) !== null;
+    report("parseInt: hex ID rejected (0x10-style no longer deletes #16)",
+      hexGotRejected && canaryStillThere, `canary #${canary.id} still present: ${canaryStillThere}`);
+    r = await runCommand(J, `>joke remove ${canary.id}`, { authorId: DEV });
+    report("parseInt: plain decimal ID still works", r.ok && jokeRepository.get(canary.id) === null);
+  }
+
+  // --- H4: per-user pending reminder cap ---
+  {
+    const R = "./dist/commands/utility/remindme.js";
+    const { reminderRepository } = await import("./dist/repositories/reminders.js");
+    const capUid = "141414141414141414";
+    let setOk = 0;
+    for (let i = 0; i < 30; i++) {
+      const r = await runCommand(R, `>remindme "in 2 minutes" filler ${i}`, { authorId: capUid });
+      if (r.ok) setOk++;
+    }
+    const pending = reminderRepository.pendingCountFor(gid, capUid);
+    report("remindme: pending capped at 25 per user (30 attempted)",
+      setOk === 25 && pending === 25, `set=${setOk} pending=${pending}`);
+    for (const row of reminderRepository.pending()) reminderRepository.markDelivered(row.id);
+  }
+
+  // --- H2: poll must sanitize question/options ---
+  {
+    const P = "./dist/commands/utility/poll.js";
+    const pr = await runCommand(P, '>poll "@everyone vote!" "@everyone" "opt" 5');
+    // The mock stringifies the reply payload — inspect the raw JSON string
+    const raw = JSON.stringify(pr.replies[0] ?? "");
+    report("poll: @everyone broken in question/options (embed + labels)",
+      pr.ok && !raw.includes('"@everyone vote!"') && !raw.match(/"label":"@everyone"/),
+      "raw @everyone survived into poll render");
+  }
+
+  // --- H1: mirror sanitizer neutralizes code fences (unit-level) ---
+  {
+    const { sanitizeMirrorLine } = await import("./dist/core/logSink.js");
+    const line = sanitizeMirrorLine('args=["``` @everyone"] ');
+    report("logSink: triple-backtick neutralized in mirrored lines", !line.includes("```"));
+  }
+}
+
+
 console.log(`\n${failed === 0 ? `ALL ${passed} CHECKS PASSED` : `${failed} FAILED / ${passed} passed`}`);
 process.exitCode = failed === 0 ? 0 : 1;
 

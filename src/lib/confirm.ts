@@ -65,7 +65,16 @@ export async function confirmAction(
     withResponse: true,
   });
 
-  const message = response.resource!.message!;
+  // The response should always carry the message resource for a
+  // fresh reply — but a non-null assertion here would turn any djs
+  // edge case into an uncaught throw inside every moderation command.
+  // Degrade instead: no message means we can't collect a click, so
+  // treat it exactly like a timeout (cancelled).
+  const message = response.resource?.message ?? null;
+  if (!message) {
+    log.error("CONFIRM", "Confirmation reply carried no message resource — treating as cancelled.");
+    return false;
+  }
 
   return new Promise<boolean>((resolve) => {
     let settled = false;

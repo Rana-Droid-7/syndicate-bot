@@ -6,7 +6,7 @@ import { baseEmbed, errorEmbed } from "../lib/embeds.js";
 import { sendDevLog } from "../lib/devlog.js";
 import { cooldowns } from "../lib/cooldowns.js";
 import { mapErrorToReply } from "../lib/errors.js";
-import { ContextError } from "../lib/errors.js";
+import { ContextError, UserInputError, PermissionError } from "../lib/errors.js";
 import { errorDetail } from "../lib/safeError.js";
 import { log } from "../core/logger.js";
 
@@ -57,6 +57,11 @@ const event: BotEvent<"interactionCreate"> = {
       if (!cmd.execute) throw new ContextError("This command doesn't run as a slash command.");
       await cmd.execute(commandInteraction);
     } catch (error) {
+      // Pre-effect failures (bad input, wrong context, permissions)
+      // refund the cooldown — retrying immediately must not lock.
+      if (error instanceof UserInputError || error instanceof ContextError || error instanceof PermissionError) {
+        cooldowns.refund(commandInteraction.guildId, commandInteraction.user.id, commandInteraction.commandName);
+      }
       await handleSlashError(commandInteraction, error, commandInteraction.commandName);
     }
   },

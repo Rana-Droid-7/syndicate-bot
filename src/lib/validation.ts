@@ -76,8 +76,18 @@ export function mentionToId(value: string): string {
   return value.replace(/[<@!>]/g, "");
 }
 
-/** Parses an integer within [min, max]; throws UserInputError otherwise. */
+/**
+ * Parses an integer within [min, max]; throws UserInputError otherwise.
+ *
+ * The strict `/^\d+$/` gate matters: Number() accepts "0x10" (16),
+ * "1e3" (1000), and "1_0" (10) as integers — so a bare Number check
+ * let `>joke remove 0x10` delete joke #16. Only plain decimal digits
+ * are valid input.
+ */
 export function parseIntInRange(raw: string, min: number, max: number, label: string, usage?: string): number {
+  if (!/^-?\d+$/.test(raw.trim())) {
+    throw new UserInputError(`\`${raw}\` isn't a valid ${label} — it must be a whole number between ${min} and ${max}.`, usage);
+  }
   const value = Number(raw);
   if (!Number.isInteger(value) || value < min || value > max) {
     throw new UserInputError(`\`${raw}\` isn't a valid ${label} — it must be a whole number between ${min} and ${max}.`, usage);
@@ -104,7 +114,7 @@ export function escapeMarkdownBold(text: string): string {
  */
 export function sanitizeEcho(text: string): string {
   return text
-    .replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200D\u2060\uFEFF]/g, "")
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200D\u2060\uFEFF\u2028\u2029]/g, "")
     .replace(/@(everyone|here)/gi, "@\u200b$1");
 }
 

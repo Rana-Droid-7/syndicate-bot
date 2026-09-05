@@ -155,8 +155,18 @@ export function enqueueMirror(tag: string, level: string, message: string): void
 const CONTROL_CHARS = /[\u0000-\u0008\u000B-\u001F\u007F]/g;
 const TOKEN_SHAPE = /(?:Bot\s+)?[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}/g;
 
-function sanitizeMirrorLine(message: string): string {
-  return message.replace(CONTROL_CHARS, "").replace(TOKEN_SHAPE, "[redacted]");
+/** Exported for the verification harness. */
+export function sanitizeMirrorLine(message: string): string {
+  return (
+    message
+      .replace(CONTROL_CHARS, "")
+      .replace(TOKEN_SHAPE, "[redacted]")
+      // The mirror body ships inside a ``` fence. A user arg carrying
+      // ``` (e.g. >suggest "``` @everyone") would otherwise break out
+      // of the code block in the private logs channel — the same
+      // defense errorDetail() applies to error text.
+      .replace(/```/g, "ʼʼʼ")
+  );
 }
 
 /** Tags worth mirroring to the private logs channel. */

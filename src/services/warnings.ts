@@ -36,7 +36,14 @@ export const warningService = {
     return count;
   },
 
-  /** Formats an active warning list for an embed, newest first. */
+  /**
+   * Formats an active warning list for an embed, newest first.
+   *
+   * activeFor() returns rows newest-first, so overflow must drop
+   * entries from the TAIL (the oldest) — slicing from the front
+   * (the previous implementation) showed the oldest warnings and
+   * hid exactly the recent ones moderators need for decisions.
+   */
   formatList(warnings: WarningRow[]): WarningsListResult {
     const allLines = warnings.map((w, i) => {
       const reason = w.reason.length > REASON_DISPLAY_LIMIT ? `${truncate(w.reason, REASON_DISPLAY_LIMIT)}` : w.reason;
@@ -45,8 +52,9 @@ export const warningService = {
 
     let hidden = 0;
     while (warnings.length - hidden > 1) {
-      const body = allLines.slice(hidden).join("\n\n");
-      const note = hidden > 0 ? `_…${hidden} older warning(s) hidden to fit._\n\n` : "";
+      const shown = allLines.slice(0, warnings.length - hidden);
+      const body = shown.join("\n\n");
+      const note = hidden > 0 ? `\n_…${hidden} older warning(s) hidden to fit._` : "";
       if (note.length + body.length <= DESCRIPTION_LIMIT) {
         return {
           description: note + body,
@@ -57,8 +65,10 @@ export const warningService = {
       hidden++;
     }
 
+    // Even one entry can't fit: show only the NEWEST warning (index 0
+    // in the newest-first list), never the oldest.
     return {
-      description: allLines[allLines.length - 1] ?? "",
+      description: allLines[0] ?? "",
       totalCount: warnings.length,
       shownCount: warnings.length > 0 ? 1 : 0,
     };

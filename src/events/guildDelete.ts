@@ -18,16 +18,15 @@ const event: BotEvent<"guildDelete"> = {
     // (channel is gone anyway).
     let removed = 0;
     let prunedUsers = 0;
+    // The in-memory AFK index drops FIRST: it's pure memory cleanup and
+    // must never be skipped because a later DB step threw.
+    afkService.dropGuildIndex(guild.id);
     try {
       removed = guildRepository.remove(guild.id);
       // The cascades orphan the departed guild's `users` rows (nothing
       // references them anymore) — sweep those too so the table
       // doesn't grow without bound across months of joins/leaves.
       prunedUsers = pruneOrphanedUsers();
-      // The in-memory AFK index must not keep stale members of a gone
-      // guild — a re-join + immediate mention must not hit the notice
-      // path with no backing row.
-      afkService.dropGuildIndex(guild.id);
     } catch (error) {
       log.error("EVENT", `Failed to clean data for guild ${guild.id}`, error);
     }

@@ -199,13 +199,39 @@ function buildChangelogEmbed() {
     .setTitle("📜 Changelog")
     .setDescription(`The latest releases of ${config.botName}.`);
 
+  // Discord caps an embed's TOTAL content (title + description +
+  // fields + footer) at 6000 chars. The full RELEASES list renders to
+  // ~7700 — auto-fit instead of assuming the array stays short: keep
+  // the newest releases whole, collapse the rest into one summary
+  // line pointing at CHANGELOG.md. (The old build was a guaranteed
+  // Invalid Form Body error on every invocation.)
+  const BUDGET = 6000;
+  const SUMMARY_LINE = "_Older releases live in CHANGELOG.md in the repository._";
+  const overhead =
+    ("📜 Changelog".length + "The latest releases of ".length + config.botName.length + ".".length +
+      "Detailed notes live in CHANGELOG.md in the repository.".length + SUMMARY_LINE.length + 100);
+
+  let used = overhead;
+  const shown: ReleaseNotes[] = [];
   for (const release of RELEASES) {
+    const name = `${release.version === config.version ? "🆕 " : ""}v${release.version} — ${release.date}`;
+    const value = formatHighlights(release.highlights);
+    if (used + name.length + value.length > BUDGET) break;
+    used += name.length + value.length;
+    shown.push(release);
+  }
+
+  for (const release of shown) {
     const isCurrent = release.version === config.version;
     embed.addFields({
       name: `${isCurrent ? "🆕 " : ""}v${release.version} — ${release.date}`,
       value: formatHighlights(release.highlights),
       inline: false,
     });
+  }
+
+  if (shown.length < RELEASES.length) {
+    embed.addFields({ name: "…", value: SUMMARY_LINE, inline: false });
   }
 
   embed.setFooter({ text: "Detailed notes live in CHANGELOG.md in the repository." });

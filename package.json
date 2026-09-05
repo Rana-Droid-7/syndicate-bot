@@ -14,14 +14,11 @@
     "verify": "tsc --noEmit && npm run build && node --test --test-reporter=spec dist/tests/unit.test.js && node verify_timer.mjs && node verify_lookup.mjs && node verify-dispatcher.mjs && node verify-integration.mjs"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^1.0.8",
     "better-sqlite3": "^13.0.3",
     "chrono-node": "^2.7.7",
     "discord.js": "^14.16.3",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "mathjs": "^15.2.0",
-    "socket.io": "^4.8.3"
+    "mathjs": "^15.2.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

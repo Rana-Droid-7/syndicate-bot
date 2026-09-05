@@ -1,5 +1,16 @@
 // Dispatcher edge-case torture test — none of these may crash.
-process.env.DATABASE_FILE = "data/final.db";
+import { rmSync, existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Throwaway DB, cleaned up like verify-integration's — the old
+// "final.db" was recreated and abandoned on every verify run.
+const TEST_DB = path.join(__dirname, "data", "dispatcher-test.db");
+for (const suffix of ["", "-wal", "-shm"]) {
+  if (existsSync(TEST_DB + suffix)) rmSync(TEST_DB + suffix);
+}
+process.env.DATABASE_FILE = "data/dispatcher-test.db";
 process.env.DISCORD_TOKEN = "x";
 process.env.CLIENT_ID = "123456789012345678";
 
@@ -54,4 +65,9 @@ closeDb();
 // process die in the same tick races better-sqlite3's native teardown
 // on some platforms (observed as SIGSEGV/139 on CI's Node 20). A
 // clean next-tick exit avoids the race entirely.
-setTimeout(() => process.exit(crashes === 0 ? 0 : 1), 50);
+setTimeout(() => {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    if (existsSync(TEST_DB + suffix)) rmSync(TEST_DB + suffix);
+  }
+  process.exit(crashes === 0 ? 0 : 1);
+}, 50);

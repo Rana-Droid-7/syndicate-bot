@@ -40,6 +40,14 @@ anything else refuses to start with a clear reason.
    - `PREFIX` — prefix for public commands (default `>`)
    - `DATABASE_FILE` — SQLite path (default `data/syndicate.db`)
 
+   **Enable the privileged intents** in the [Developer Portal](https://discord.com/developers/applications)
+   → your application → **Bot** → *Privileged Gateway Intents*:
+   - **SERVER MEMBERS INTENT** — member lookups (`>userinfo`, moderation hierarchy checks)
+   - **MESSAGE CONTENT INTENT** — the prefix command lane (`>help`, `>afk`, ...)
+
+   The bot requests both at login; leaving them off makes Discord
+   refuse the connection with `Used disallowed intents`.
+
 3. Register the (moderation/admin/developer + a few utility) slash commands:
    ```
    npm run deploy-commands

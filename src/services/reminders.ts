@@ -3,8 +3,10 @@ import { reminderRepository, type ReminderRow } from "../repositories/reminders.
 import { safeSetTimeout } from "../lib/safeTimeout.js";
 import { log } from "../core/logger.js";
 
-const MAX_DELAY_MS = 30 * 24 * 60 * 60 * 1000; // 30-day cap, matches command validation
 const SWEEP_INTERVAL_MS = 60_000; // periodic due-check, safety net for missed timers
+// Cap on pending reminders per user per guild — without one, a 5s
+// cooldown still allows ~17k/day and every row becomes a boot timer.
+export const MAX_PENDING_PER_USER = 25;
 
 // Set on shutdown: in-flight timers must not touch the closed DB.
 let shuttingDown = false;
@@ -46,6 +48,13 @@ export const reminderService = {
     content: string,
     dueUnixMs: number,
   ): Promise<number> {
+    // Per-user cap: reminders are a promise, but an unbounded queue is
+    // a timer bomb (every pending row becomes a boot timer) and DB
+    // growth without limit. 25 concurrent reminders is plenty for any
+    // sane human use.
+    if (reminderRepository.pendingCountFor(guildId, userId) >= MAX_PENDING_PER_USER) {
+      throw Object.assign(new Error(`You already have ${MAX_PENDING_PER_USER} pending reminders — let some fire first.`), { name: "UserInputError" });
+    }
     const id = reminderRepository.create(guildId, channelId, userId, content, dueUnixMs);
     const row = reminderRepository.get(id);
     if (row) this.schedule(client, row);
@@ -125,6 +134,19 @@ async function deliver(client: Client, id: number): Promise<void> {
       reminderRepository.markDelivered(id);
       log.info("TIMER", `Delivered reminder #${id} to ${reminder.user_id} in channel ${reminder.channel_id}.`);
     } catch (error) {
+      // A Discord rate limit (429 / "rate limited by this route") is
+      // TRANSIENT — e.g. a boot-time burst of overdue reminders.
+      // Marking the row failed would permanently kill a reminder that
+      // only needed a retry. Leave it pending: the 60s sweep picks it
+      // up again once the window clears. Only hard errors (missing
+      // perms, deleted message surface) go terminal.
+      const messageText = error instanceof Error ? error.message.toLowerCase() : "";
+      const isRateLimit =
+        messageText.includes("rate limit") || messageText.includes("429");
+      if (isRateLimit) {
+        log.warn("TIMER", `Reminder #${id} hit a rate limit — staying pending, the sweep will retry.`);
+        return;
+      }
       log.error("TIMER", `Failed to deliver reminder #${id}`, error);
       reminderRepository.markFailed(id);
     }

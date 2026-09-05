@@ -43,6 +43,15 @@ export class Cooldowns {
     this.hits.set(key, now + cooldownSeconds * 1000);
   }
 
+  /**
+   * Removes a live cooldown hit — used when a command failed BEFORE
+   * doing anything (validation/context/permission errors). A user
+   * shouldn't burn their cooldown window on a typo retry.
+   */
+  refund(guildId: string | null, userId: string, commandName: string): void {
+    this.hits.delete(this.key(guildId, userId, commandName));
+  }
+
   /** Periodic sweep so inactive keys don't accumulate forever. */
   sweep(): void {
     const now = Date.now();

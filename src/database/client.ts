@@ -14,6 +14,10 @@ const projectRoot = path.resolve(__dirname, "..", "..");
 export const DB_PATH = path.resolve(projectRoot, config.databaseFile);
 
 let db: SqliteDatabase | null = null;
+// Set by closeDb(): after an orderly shutdown, ANY storage access is
+// a programming error (stray timer, late event) — getDb() must refuse
+// loudly instead of silently re-opening the database file.
+let closed = false;
 
 /**
  * SQLite is single-file, serverless, and fast — the right size for
@@ -24,6 +28,9 @@ let db: SqliteDatabase | null = null;
  */
 export function getDb(): SqliteDatabase {
   if (db) return db;
+  if (closed) {
+    throw new Error("getDb() called after closeDb() — storage was shut down. This is a bug: a subsystem touched SQL after the shutdown path closed it.");
+  }
 
   mkdirSync(path.dirname(DB_PATH), { recursive: true });
   db = new Database(DB_PATH);
@@ -48,6 +55,7 @@ export function closeDb(): void {
   if (db) {
     db.close();
     db = null;
+    closed = true;
     log.info("SHUTDOWN", "Database closed cleanly.");
   }
 }
