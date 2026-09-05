@@ -1,23 +1,17 @@
-# Syndicate Bot — v0.5.2-beta
+# Syndicate Bot — v0.5.3-beta
 
-A polished Discord bot: utility, fun ("Coolsies"), moderation, admin,
-and developer tiers — built with discord.js + TypeScript on a real
-SQL database.
+A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
+moderation, admin, and developer tiers — built with discord.js +
+TypeScript on a real SQL database.
 
-v0.5.2 is the **hardening release**: every log surface censors
-secrets, moderation re-validates all parties after confirmation
-dialogs, the math worker runs with hard heap limits, and the repo
-ships CI (GitHub + GitLab), a one-shot `npm run verify`, a private
-LICENSE, and a new **`>rps`** game. It builds on v0.5.1's bug-hunt
-(fifteen audit bugs fixed and regression-tested) and v0.5.0's
-ground-up engineering: **persistent storage** (SQLite — AFK,
-reminders, warnings, suggestions, and jokes survive restarts and
-crashes), the **Coolsies category**, **`>` as the primary
-interface** for public commands (slash is reserved for
-moderation/admin/developer tools that need structured input and
-native permission gating), **per-user cooldowns**, quoted-argument
-parsing, a typed **error taxonomy**, and **load-time command
-validation** that refuses to boot on broken definitions.
+v0.5.3 is the **help & content overhaul**: every command now carries
+a proper one-line description plus a rich `>help <command>` guide
+(what it does, how it behaves, tips); category pages and detail pages
+rebuilt around them; `>help typo` gets a smart "did you mean". The
+8-ball grew a full management suite (`>8ball add/list/remove/edit/
+enable/disable`, exactly like `/joke`) with its own database-backed
+response pool — and both the joke and 8-ball collections ship
+preloaded.
 
 ## Setup
 

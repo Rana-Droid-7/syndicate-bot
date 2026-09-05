@@ -2,6 +2,34 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `>changelog` — it shows the most recent releases from this same history.
 
+## v0.5.3-beta — 2026-09-05 (help & content overhaul)
+
+The help system, every command's documentation, and the 8-ball — rebuilt from scratch.
+
+### Help system, rebuilt
+- **Every command now documents itself.** A new required `description` metadata field (one-liner, enforced at boot — a command without one refuses to load) plus an optional `details` block: the rich, properly-written guide shown by `>help <command>`. All 34 command files carry both, written properly — what each command does, how it behaves, its limits, and tips.
+- **Category pages redesigned** — every command now shows as `>name — description` with its usage line beneath. Scannable instead of a bare usage dump.
+- **Detail pages rebuilt** — description/details prose up top, then Usage, Category, Available-as, Aliases, Examples, and a new **Cooldown** field. Context-menu commands get descriptions too.
+- **Smart not-found**: `>help halp` now suggests the closest command ("did you mean **help**?" with the exact command to run), falls back to starts-with/contains matches with descriptions, and only then points at the menu. Same behavior on `/help`.
+- The home card, category select menu, and visibility rules (admin/owner sections only for those who can use them) carry over unchanged.
+
+### 8-ball, grown up
+- **`>8ball` / `/8ball` is now a full suite**, mirroring `/joke`: `ask` (public), plus developer-only `add`, `list [page]`, `remove <id>`, `edit <id> "<new>"`, `enable/disable <id>` — identical subcommand shapes on both surfaces.
+- Responses live in a new `eightball` database table (same schema family as jokes: author, timestamps, enabled state, usage counts; random selection happens in SQL inside one transaction with the counter bump).
+- Prefix `>8ball <question>` without a subcommand still just asks — the smart dispatcher only treats explicit management words as subcommands.
+- Sanitize-then-truncate ordering throughout (the mention-expansion lesson from v0.5.1, applied from day one).
+- Every ask shows the response ID and pool size in the footer.
+
+### Preloaded content
+- **19 classic 8-ball responses** seeded via an idempotent migration (`002`) — a fresh database boots with a full pool, zero setup.
+- **10 starter jokes** seeded the same way — `>joke say` works out of the box.
+
+### Attribution
+- The bot now credits **Ranajoy Roy** as its author — `/bot` (`>bot`), `package.json`, and LICENSE.md.
+
+### Notes
+- `>help` and the whole help chain now draw from the same metadata the loader validates — documentation and reality can't drift apart; a command missing its description is a boot error, not a silent hole in the menu.
+
 ## v0.5.2-beta — 2026-09-05 (hardening + repo round)
 
 Security, consistency, and repository polish. No behavior regressions — the full verification loop (build, typecheck, 33+ unit tests, 4 harnesses) passes.

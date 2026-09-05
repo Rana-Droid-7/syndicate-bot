@@ -15,6 +15,13 @@ const command: Command = {
   category: "moderation",
   surface: "slash-only",
   usage: "/ban <user> [reason] [delete_days]",
+  description: "Ban a member — by mention or raw ID.",
+  details:
+    "Permanently removes someone from the server and blocks re-joins. Works even " +
+    "if the target already left — a ban by ID still sticks. Optionally wipes their " +
+    "last 0–7 days of messages. Everything is confirmation-gated, and the full " +
+    "moderation hierarchy applies: no self, bot, owner, or equal/higher-role " +
+    "targets, and the bot's role must sit above theirs. Requires Ban Members.",
   data: new SlashCommandBuilder()
     .setName("ban")
     .setDescription("Ban a member from the server.")

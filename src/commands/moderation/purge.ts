@@ -15,6 +15,12 @@ const command: Command = {
   category: "moderation",
   surface: "slash-only",
   usage: "/purge <amount>",
+  description: "Bulk-delete recent messages in this channel.",
+  details:
+    "Sweeps the newest 1–100 messages from the channel in one shot. Discord only " +
+    "bulk-deletes messages under 14 days old — older ones are skipped and the " +
+    "final count tells you exactly how many actually went. The confirmation prompt " +
+    "is ephemeral so it can't be caught by its own purge. Requires Manage Messages.",
   data: new SlashCommandBuilder()
     .setName("purge")
     .setDescription("Bulk-delete recent messages in this channel.")

@@ -15,6 +15,12 @@ const command: Command = {
   category: "moderation",
   surface: "slash-only",
   usage: "/kick <user> [reason]",
+  description: "Kick a member from the server.",
+  details:
+    "Removes someone immediately — they can re-join with a fresh invite if one's " +
+    "given, so it's the softer option between kick and ban. Confirmation-gated, " +
+    "with the full hierarchy check (self/bot/owner/equal-or-higher blocked) " +
+    "re-verified after the confirm click. Requires Kick Members.",
   data: new SlashCommandBuilder()
     .setName("kick")
     .setDescription("Kick a member from the server.")

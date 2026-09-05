@@ -24,6 +24,12 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">calc <expression>",
+  description: "Evaluate math — from basic sums to sqrt, trig, and powers.",
+  details:
+    "A real calculator: arithmetic, parentheses, powers (`2^10`), `sqrt()`, `log()`, " +
+    "trig, constants. Runs in an isolated worker thread with a 3-second kill timer " +
+    "and hard memory limits — nothing you type can hang or crash the bot. Results " +
+    "over 500 characters are politely declined. 200 characters per expression.",
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()
     .setName("calculate")

@@ -6,6 +6,7 @@ import { log } from "../../core/logger.js";
 const command: UserContextCommand = {
   category: "utility",
   contextMenu: true,
+  description: "Grab any user's avatar at full size, straight from the right-click menu.",
   data: new ContextMenuCommandBuilder().setName("Avatar").setType(ApplicationCommandType.User),
 
   async execute(interaction: UserContextMenuCommandInteraction) {

@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import type { SyndicateClient } from "../core/client.js";
-import type { AnyCommand, Command } from "../types/command.js";
+import type { AnyCommand, Command, UserContextCommand } from "../types/command.js";
 import { log } from "../core/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +45,13 @@ export async function loadCommands(client: SyndicateClient): Promise<void> {
 
       const isContext = "contextMenu" in command;
 
+      if (isContext) {
+        const ctx = command as UserContextCommand;
+        if (!ctx.description || ctx.description.length === 0) {
+          throw new Error(`Context command in ${categoryDir.name}/${file} is missing its "description" metadata.`);
+        }
+      }
+
       if (!isContext) {
         const cmd = command as Command;
         const hasSlash = typeof cmd.execute === "function";
@@ -53,6 +60,14 @@ export async function loadCommands(client: SyndicateClient): Promise<void> {
 
         if (!cmd.usage || typeof cmd.usage !== "string" || cmd.usage.length === 0) {
           throw new Error(`Command in ${categoryDir.name}/${file} is missing its "usage" metadata.`);
+        }
+        if (!cmd.description || typeof cmd.description !== "string" || cmd.description.length === 0) {
+          throw new Error(`Command in ${categoryDir.name}/${file} is missing its "description" metadata.`);
+        }
+        if (cmd.description.length > 100) {
+          throw new Error(
+            `Command "${cmd.data?.name ?? "?"}" (${categoryDir.name}/${file}): description must be a one-liner under 100 chars — put the long story in "details".`,
+          );
         }
         if (!cmd.surface) {
           throw new Error(`Command in ${categoryDir.name}/${file} is missing its "surface" metadata.`);

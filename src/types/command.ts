@@ -34,6 +34,14 @@ export interface Command {
   /** Slash builder. Required for every surface EXCEPT "prefix-only". */
   data?: SlashCommandData;
   category: CommandCategory;
+  /** One-line description — the menu text. Required for every command. */
+  description: string;
+  /**
+   * Extended help block shown by `>help <command>`. Markdown-safe
+   * prose: what it does, how it behaves, tips. Omit for simple
+   * commands where the one-liner says it all.
+   */
+  details?: string;
   /** Human-facing usage line, e.g. ">remindme <time> <text>" or "/kick <user> [reason]". */
   usage: string;
   /** Short examples shown in help detail pages. */
@@ -65,6 +73,8 @@ export interface Command {
 export interface UserContextCommand {
   data: ContextMenuCommandBuilder;
   category: CommandCategory;
+  /** One-line description — the menu text. */
+  description: string;
   contextMenu: true;
   execute: (interaction: UserContextMenuCommandInteraction) => Promise<void>;
 }

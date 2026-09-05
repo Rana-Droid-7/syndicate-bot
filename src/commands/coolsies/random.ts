@@ -23,6 +23,11 @@ const command: Command = {
   category: "coolsies",
   surface: "both",
   usage: ">random <min> <max>",
+  description: "A random number between two bounds.",
+  details:
+    "Fair draw from any range you give — both ends included. Bounds between " +
+    "-1,000,000 and 1,000,000. Useful for picks, giveaways, and settling \"pick " +
+    "a number between 1 and 100\" on the spot.",
   examples: [">random 1 100"],
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()

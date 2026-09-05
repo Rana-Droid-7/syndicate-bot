@@ -14,17 +14,41 @@ import { log } from "../core/logger.js";
 import type { SyndicateClient } from "../core/client.js";
 import type { AnyCommand, Command, CommandCategory } from "../types/command.js";
 
-// Discord embeds cap at 25 fields total. Each command in a category
-// embed gets its own field, so this reserves room for a "...and N
-// more" note if a category ever grows past the limit.
+// Discord embeds cap at 25 fields total. Category pages reserve one
+// slot for the overflow note.
 const MAX_CATEGORY_FIELDS = 24;
 
 export const CATEGORY_META: Record<CommandCategory, { label: string; emoji: string; description: string; color: number }> = {
-  utility: { label: "Utility", emoji: "🛠️", description: "Everyday tools and info. Open to everyone.", color: 0x5865f2 },
-  coolsies: { label: "Coolsies", emoji: "🎉", description: "Fun, random, lightweight commands — dice, jokes, and more.", color: 0xeb459e },
-  moderation: { label: "Moderation", emoji: "🛡️", description: "Server moderation tools. Requires the matching Discord permission.", color: 0xed4245 },
-  admin: { label: "Admin", emoji: "🔧", description: "Server configuration tools. Requires Administrator permission.", color: 0xf1c40f },
-  owner: { label: "Developer", emoji: "🔑", description: "Bot process control. Restricted to trusted developers only.", color: 0x2f3136 },
+  utility: {
+    label: "Utility",
+    emoji: "🛠️",
+    description: "Everyday tools and info. Open to everyone.",
+    color: 0x5865f2,
+  },
+  coolsies: {
+    label: "Coolsies",
+    emoji: "🎉",
+    description: "Fun, random, lightweight — dice, jokes, 8-ball, and more.",
+    color: 0xeb459e,
+  },
+  moderation: {
+    label: "Moderation",
+    emoji: "🛡️",
+    description: "Server moderation tools. Requires the matching Discord permission.",
+    color: 0xed4245,
+  },
+  admin: {
+    label: "Admin",
+    emoji: "🔧",
+    description: "Server configuration tools. Requires Administrator permission.",
+    color: 0xf1c40f,
+  },
+  owner: {
+    label: "Developer",
+    emoji: "🔑",
+    description: "Bot process control. Restricted to trusted developers only.",
+    color: 0x2f3136,
+  },
 };
 
 // Categories every member can see, in display order. "admin" and
@@ -108,7 +132,8 @@ function surfaceBadge(command: AnyCommand): string {
 }
 
 /**
- * Category page — every command as a compact field: usage + surface.
+ * Category page — every command with its description and usage,
+ * compact and scannable.
  */
 export function buildCategoryEmbed(client: SyndicateClient, category: CommandCategory): EmbedBuilder {
   const meta = CATEGORY_META[category];
@@ -117,7 +142,7 @@ export function buildCategoryEmbed(client: SyndicateClient, category: CommandCat
   const embed = baseEmbed()
     .setColor(meta.color)
     .setTitle(`${meta.emoji} ${meta.label} Commands`)
-    .setDescription(`${meta.description}\n\n_Tip: \`${config.prefix}help <command>\` shows a detailed view of any command._`);
+    .setDescription(`${meta.description}\n\n_Tip: \`${config.prefix}help <command>\` shows the full guide for any command._`);
 
   if (allCommands.length === 0) {
     embed.addFields({ name: "\u200b", value: "No commands in this category yet — check back in a future update." });
@@ -133,22 +158,12 @@ export function buildCategoryEmbed(client: SyndicateClient, category: CommandCat
   }
 
   for (const command of shown) {
-    const name = commandName(command);
-
-    if ("contextMenu" in command) {
-      const ctx = command as unknown as { data: ContextMenuCommandBuilder };
-      embed.addFields({
-        name: `${meta.emoji} ${ctx.data.name} (right-click)`,
-        value: `Right-click any user → **Apps** → **${ctx.data.name}**.`,
-        inline: false,
-      });
-      continue;
-    }
-
     const cmd = command as Command;
+    const name = commandName(command);
+    const fieldTitle = "contextMenu" in command ? `${name} (right-click)` : cmd.surface === "slash-only" ? `/${name}` : `${config.prefix}${name}`;
     embed.addFields({
-      name: `${config.prefix}${name}`,
-      value: `\`${cmd.usage}\`\n${surfaceBadge(command)}`,
+      name: fieldTitle,
+      value: `${cmd.description}\n\`${cmd.usage}\``,
       inline: false,
     });
   }
@@ -166,7 +181,7 @@ export function buildCategoryEmbed(client: SyndicateClient, category: CommandCat
 }
 
 /**
- * Command detail page — one command, fully: usage, description,
+ * Command detail page — one command, fully: description, usage,
  * aliases, examples, category, surface. Visibility mirrors the
  * category pages: admin details need Administrator, developer
  * details need developer status — anyone else gets null.
@@ -186,14 +201,15 @@ export function buildCommandDetailEmbed(
 
   const meta = CATEGORY_META[command.category];
   const name = commandName(command);
+  const cmd = command as Command;
 
-  // Context-menu commands get their own layout.
+  // ---- context-menu commands get their own layout ----
   if ("contextMenu" in command) {
-    const ctx = command as unknown as { data: ContextMenuCommandBuilder };
+    const ctx = command as unknown as { data: ContextMenuCommandBuilder; description: string };
     return baseEmbed()
       .setColor(meta.color)
       .setTitle(`${meta.emoji} ${ctx.data.name} (right-click command)`)
-      .setDescription(`Use **${ctx.data.name}** from the right-click Apps menu on any user.`)
+      .setDescription(ctx.description)
       .addFields({
         name: "How to use",
         value: `Right-click any user → **Apps** → **${ctx.data.name}**.`,
@@ -202,31 +218,37 @@ export function buildCommandDetailEmbed(
       .setFooter({ text: `${config.botName} • v${config.version}` });
   }
 
-  const cmd = command as Command;
-  const aliases =
-    cmd.prefixNames && cmd.prefixNames.length > 0
-      ? cmd.prefixNames.map((n) => `\`${config.prefix}${n}\``).join(", ")
-      : null;
+  const typedName = cmd.surface === "slash-only" ? `/${name}` : `${config.prefix}${name}`;
 
   const embed = baseEmbed()
     .setColor(meta.color)
-    .setTitle(`${config.prefix}${name}`)
-    .setDescription(cmd.data?.description ?? `**${cmd.usage}**`)
-    .addFields(
-      { name: "Usage", value: `\`${cmd.usage}\``, inline: false },
-      { name: "Category", value: `${meta.emoji} ${meta.label}`, inline: true },
-      { name: "Available as", value: surfaceBadge(command), inline: true },
-    );
+    .setTitle(`${meta.emoji} ${typedName}`)
+    .setDescription(cmd.details ?? cmd.description);
 
+  embed.addFields(
+    { name: "Usage", value: `\`${cmd.usage}\``, inline: false },
+    { name: "Category", value: `${meta.emoji} ${meta.label}`, inline: true },
+    { name: "Available as", value: surfaceBadge(command), inline: true },
+  );
+
+  const aliases =
+    cmd.prefixNames && cmd.prefixNames.length > 1
+      ? cmd.prefixNames.map((n) => `\`${config.prefix}${n}\``).join(", ")
+      : null;
   if (aliases) {
     embed.addFields({ name: "Aliases", value: aliases, inline: false });
   }
+
   if (cmd.examples && cmd.examples.length > 0) {
     embed.addFields({
       name: "Examples",
       value: cmd.examples.map((e) => `\`${e}\``).join("\n"),
       inline: false,
     });
+  }
+
+  if (cmd.cooldownSeconds && cmd.cooldownSeconds > 0) {
+    embed.addFields({ name: "Cooldown", value: `${cmd.cooldownSeconds}s per user`, inline: true });
   }
 
   embed.setFooter({ text: `${config.botName} • v${config.version} • <> required, [] optional` });

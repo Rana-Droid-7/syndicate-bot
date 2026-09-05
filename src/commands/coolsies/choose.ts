@@ -16,6 +16,11 @@ const command: Command = {
   category: "coolsies",
   surface: "both",
   usage: ">choose <option1> <option2> [more...]",
+  description: "Can't decide? Let the bot pick between your options.",
+  details:
+    "Give it two or more options and it chooses one — the digital coin-flip for " +
+    "decisions that have more than two sides. Wrap multi-word options in quotes " +
+    "(`>choose \"green curry\" pizza`). Up to 10 options, 100 characters each.",
   examples: ['>choose pizza pasta "green curry"', ">choose left right"],
   cooldownSeconds: 5,
   data: new SlashCommandBuilder()

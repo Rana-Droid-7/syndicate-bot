@@ -40,6 +40,11 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">banner [@user]",
+  description: "Show a user's profile banner, if they have one.",
+  details:
+    "Fetches the profile banner behind someone's avatar at full size. Not " +
+    "everyone has one — if they don't, the bot says so plainly. Works with " +
+    "mentions, bare IDs, or yourself.",
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()
     .setName("banner")

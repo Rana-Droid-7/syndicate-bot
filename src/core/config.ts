@@ -16,7 +16,8 @@ const projectRoot = path.resolve(__dirname, "..", "..");
 
 export const config = {
   botName: "Syndicate Bot",
-  version: "0.5.2-beta",
+  version: "0.5.3-beta",
+  author: "Ranajoy Roy",
 
   token: requireEnv("DISCORD_TOKEN"),
   clientId: requireEnv("CLIENT_ID"),

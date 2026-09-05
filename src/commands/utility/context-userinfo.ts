@@ -6,6 +6,7 @@ import { log } from "../../core/logger.js";
 const command: UserContextCommand = {
   category: "utility",
   contextMenu: true,
+  description: "The full profile card for any user, one right-click away.",
   data: new ContextMenuCommandBuilder().setName("User Info").setType(ApplicationCommandType.User),
 
   async execute(interaction: UserContextMenuCommandInteraction) {

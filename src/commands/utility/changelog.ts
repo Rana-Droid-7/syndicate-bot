@@ -15,6 +15,18 @@ interface ReleaseNotes {
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
   {
+    version: "0.5.3-beta",
+    date: "2026-09-05",
+    highlights: [
+      "**Help, rebuilt**: every command now has a proper description + a full `>help <command>` guide — what it does, how it behaves, tips",
+      "**Category pages redesigned** — every command listed with its description and usage, scannable at a glance",
+      "**Smart `>help`**: typos get a \"did you mean...?\" suggestion before anything else",
+      "**8-ball is a full suite now** — `>8ball ask/add/list/remove/edit/enable/disable`, exactly like `/joke`",
+      "**Preloaded**: 19 classic 8-ball responses + 10 starter jokes ship in the database — no setup needed",
+      "Every detail page shows aliases, examples, and cooldowns",
+    ],
+  },
+  {
     version: "0.5.2-beta",
     date: "2026-09-05",
     highlights: [
@@ -137,6 +149,10 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">changelog",
+  description: "See what's new in the latest releases.",
+  details:
+    "The recent release notes, in-chat: version, date, and the highlights that " +
+    "matter. The full history lives in the repository's CHANGELOG.md.",
   cooldownSeconds: 5,
   data: new SlashCommandBuilder()
     .setName("changelog")

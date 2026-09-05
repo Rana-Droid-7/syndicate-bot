@@ -39,6 +39,13 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">timestamp <time>",
+  description: "Turn plain-words time into a Discord timestamp tag.",
+  details:
+    "Describe a time in plain words — \"tomorrow 5pm\", \"in 3 hours\", \"dec 25 " +
+    "2026 9am\" — and the bot returns a Discord timestamp tag you can paste into " +
+    "any message. Everyone who sees it views it in their OWN local time zone, so " +
+    "event planning stops being a time-zone math headache. Pick a display style " +
+    "(t/T/d/D/f/F/R) or take the default relative one.",
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()
     .setName("timestamp")

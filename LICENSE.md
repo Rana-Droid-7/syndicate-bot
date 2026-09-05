@@ -1,12 +1,12 @@
 # License
 
-**Copyright © 2026 Syndicate Bot contributors. All rights reserved.**
+**Copyright © 2026 Ranajoy Roy. All rights reserved.**
 
 ## 1. Not for public use
 
 This software is **private and not for public use**. It is provided
-solely for the original author and explicitly authorized operators of
-the Syndicate Bot Discord application.
+solely for Ranajoy Roy and explicitly authorized operators of the
+Syndicate Bot Discord application.
 
 ## 2. What you may NOT do
 

@@ -131,6 +131,12 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">userinfo [@user]",
+  description: "Full profile on any member — badges, roles, dates, banner.",
+  details:
+    "Everything about a member in one card: account and server-join dates (as " +
+    "live timestamps), role list (capped for readability), badge emojis, boost " +
+    "status, and their profile banner when they have one. Works with mentions, " +
+    "bare IDs, or yourself.",
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()
     .setName("userinfo")

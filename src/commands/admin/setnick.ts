@@ -8,6 +8,12 @@ const command: Command = {
   category: "admin",
   surface: "slash-only",
   usage: "/setnick [nickname]",
+  description: "Change the bot's nickname in this server.",
+  details:
+    "Sets what the bot is called on this server without touching its global name. " +
+    "Leave the option empty to reset it to the default. The nickname is per-server — " +
+    "other servers keep their own. Requires Administrator, and the bot's role must " +
+    "be allowed to manage its own nickname.",
   data: new SlashCommandBuilder()
     .setName("setnick")
     .setDescription("Change Syndicate Bot's nickname in this server. (Admin only)")

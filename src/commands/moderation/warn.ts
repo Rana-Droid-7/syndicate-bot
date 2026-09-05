@@ -15,6 +15,14 @@ const command: Command = {
   category: "moderation",
   surface: "slash-only",
   usage: "/warn add|list|clear <user> [reason]",
+  description: "Track warnings for a member — add, list, or clear.",
+  details:
+    "A persistent, per-server warning record for moderation decisions. " +
+    "`add` records a warning with reason and moderator; `list` shows the record " +
+    "newest-first with who warned and when; `clear` wipes the active record " +
+    "(confirmation-gated). Warnings survive restarts, are capped at 25 active per " +
+    "member (oldest roll off), and the same hierarchy rules as kick/ban/timeout " +
+    "apply to `add`. Requires Timeout Members (Moderate Members).",
   data: new SlashCommandBuilder()
     .setName("warn")
     .setDescription("Manage warnings for a member.")

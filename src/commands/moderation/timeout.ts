@@ -33,6 +33,13 @@ const command: Command = {
   category: "moderation",
   surface: "slash-only",
   usage: "/timeout <user> <duration> [reason]",
+  description: "Temporarily mute a member (up to 28 days).",
+  details:
+    "The non-destructive mute: the member stays in the server but can't send " +
+    "messages until the timer runs out. Durations use a number plus s/m/h/d " +
+    "(e.g. `10m`, `1h`, `2d`), capped at Discord's 28-day limit. The expiry is " +
+    "shown as a live timestamp in the result. Full hierarchy checks apply, " +
+    "re-verified after confirmation. Requires Timeout Members (Moderate Members).",
   data: new SlashCommandBuilder()
     .setName("timeout")
     .setDescription("Time out a member (temporarily restrict them from sending messages).")

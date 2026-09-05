@@ -42,6 +42,12 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">roll [notation]",
+  description: "Roll dice with standard notation (2d6+3).",
+  details:
+    "Full dice notation for tabletop and games: `<count>d<sides>` with an optional " +
+    "±modifier — `2d6`, `1d20+5`, `4d8-2`. Every roll is shown, natural maximums " +
+    "are bolded like crits, and the total is summed. Up to 20 dice, 2–9999 sides. " +
+    "No notation? Plain 1d6.",
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()
     .setName("roll")

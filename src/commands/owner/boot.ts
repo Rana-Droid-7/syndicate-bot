@@ -39,6 +39,13 @@ const command: Command = {
   category: "owner",
   surface: "slash-only",
   usage: "/boot",
+  description: "Reboot or shut down the bot — from a private DM panel.",
+  details:
+    "Process control for the bot's developers only, gated by trusted user IDs in " +
+    "code — never roles, because a role from some other server must never control " +
+    "the whole bot. Running it DMs you a private button panel: **Reboot** exits " +
+    "for the process manager to bring it back, **Shutdown** stays down until " +
+    "started manually. Both announce to the dev-log channel before disconnecting.",
   data: new SlashCommandBuilder()
     .setName("boot")
     .setDescription("Control the bot process — sends you a private button panel in your DMs. (Developer only)")

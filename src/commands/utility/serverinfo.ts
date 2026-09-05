@@ -77,6 +77,11 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">serverinfo",
+  description: "A snapshot of this server — members, boosts, channels, and more.",
+  details:
+    "The server's ID card: creation date, owner, member count, channel and role " +
+    "counts, boost level with a progress bar to the next tier, verification " +
+    "level, vanity invite, and the banner if it has one.",
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()
     .setName("serverinfo")

@@ -9,6 +9,10 @@ const command: Command = {
   category: "coolsies",
   surface: "both",
   usage: ">coinflip",
+  description: "Flip a coin — heads or tails.",
+  details:
+    "The classic 50/50. One flip, one answer, zero ceremony. Settle it the " +
+    "old-fashioned way.",
   examples: [">coinflip"],
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()

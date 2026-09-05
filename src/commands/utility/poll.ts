@@ -62,6 +62,12 @@ const command: Command = {
   category: "utility",
   surface: "slash-only",
   usage: "/poll <question> <option1> <option2> [options...] [minutes]",
+  description: "Create a live button poll with a results bar.",
+  details:
+    "Ask anything with 2–10 options: each option becomes a numbered button, and " +
+    "votes update a live bar chart on the message. One vote per person (latest " +
+    "click counts), runs 1–60 minutes (default 5), then closes automatically with " +
+    "final tallies and percentages and disables its buttons.",
   data: new SlashCommandBuilder()
     .setName("poll")
     .setDescription("Create a quick poll with button voting.")

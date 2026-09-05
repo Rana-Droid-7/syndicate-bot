@@ -17,6 +17,13 @@ const command: Command = {
   category: "admin",
   surface: "slash-only",
   usage: "/slowmode <seconds> [channel]",
+  description: "Set slowmode on a channel (0 disables).",
+  details:
+    "Limits how fast members can send messages in a channel — one message per " +
+    "interval per member. Use it to tame busy channels without hard-locking them. " +
+    "`0` turns it off. Discord caps slowmode at 6 hours; pick a channel or it " +
+    "applies to the one you're in. Requires Administrator (plus Manage Channels " +
+    "on the bot).",
   data: new SlashCommandBuilder()
     .setName("slowmode")
     .setDescription("Set slowmode on a channel. (Admin only)")

@@ -13,12 +13,12 @@ function buildBotInfoEmbed(client: SyndicateClient) {
   const guildCount = client.guilds.cache.size;
   const userCount = client.guilds.cache.reduce((acc, g) => acc + g.memberCount, 0);
 
-  const developerLine = config.ownerId ? `<@${config.ownerId}>` : "Syndicate Bot Team";
+  const developerLine = config.ownerId ? `<@${config.ownerId}>` : config.author;
 
   return baseEmbed()
     .setTitle(`${config.botName} — Info`)
     .setThumbnail(client.user?.displayAvatarURL() ?? null)
-    .setDescription("A modern utility & moderation bot for Discord. Beta releases focus on utilities first.")
+    .setDescription(`A modern utility & moderation bot for Discord by **${config.author}**.`)
     .addFields(
       { name: "Version", value: `\`${config.version}\``, inline: true },
       { name: "Uptime", value: formatDuration(uptime), inline: true },
@@ -42,6 +42,11 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">bot",
+  description: "Everything about the bot — version, uptime, stats, invite.",
+  details:
+    "The bot's ID card: current version, uptime, memory usage, server and member " +
+    "counts, the library stack it runs on, and who built it. Includes an invite " +
+    "button if you want it in your own server.",
   cooldownSeconds: 5,
   data: new SlashCommandBuilder()
     .setName("bot")

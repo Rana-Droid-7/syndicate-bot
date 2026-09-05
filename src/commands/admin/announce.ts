@@ -15,6 +15,13 @@ const command: Command = {
   category: "admin",
   surface: "slash-only",
   usage: "/announce <channel> <message> [title]",
+  description: "Post an announcement to any channel as the bot.",
+  details:
+    "Has something to say but want it to come from the server, not from you? " +
+    "This posts your message as a clean, branded embed in any text channel you pick — " +
+    "great for rules, events, and updates. The announcement renders as the bot, so " +
+    "it won't carry your name. Requires Administrator, and the bot needs permission " +
+    "to send messages in the target channel.",
   data: new SlashCommandBuilder()
     .setName("announce")
     .setDescription("Post an announcement to a channel as the bot. (Admin only)")

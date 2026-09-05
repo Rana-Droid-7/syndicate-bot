@@ -21,6 +21,10 @@ const command: Command = {
   category: "coolsies",
   surface: "both",
   usage: ">dice",
+  description: "Roll a six-sided die.",
+  details:
+    "One clean d6 roll — 1 through 6, each face equally likely. For dice notation " +
+    "with counts, sides, and modifiers, see `>roll`.",
   examples: [">dice"],
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()

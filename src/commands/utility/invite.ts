@@ -33,6 +33,10 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">invite",
+  description: "Get the bot's invite link.",
+  details:
+    "A one-click invite that requests exactly the permissions the bot's commands " +
+    "need — nothing more. Take it to any server where you have Manage Server.",
   cooldownSeconds: 5,
   data: new SlashCommandBuilder().setName("invite").setDescription("Get an invite link for Syndicate Bot."),
 

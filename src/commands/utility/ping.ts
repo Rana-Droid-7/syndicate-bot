@@ -13,6 +13,11 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">ping",
+  description: "Check the bot's latency.",
+  details:
+    "Measures the real round-trip (your message in, the reply out) plus the " +
+    "gateway heartbeat. If the bot feels sluggish, this tells you whether it's " +
+    "the connection or something else.",
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()
     .setName("ping")

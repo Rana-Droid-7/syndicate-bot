@@ -38,6 +38,12 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">avatar [@user]",
+  description: "Show anyone's avatar in full size.",
+  details:
+    "Pulls a user's avatar at full resolution with a direct link underneath — " +
+    "great for grabbing the original file. Works with mentions, bare IDs, or no " +
+    "argument (yourself). The button row includes a banner link too when the " +
+    "user has one.",
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()
     .setName("avatar")

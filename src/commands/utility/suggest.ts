@@ -22,6 +22,12 @@ const command: Command = {
   surface: "prefix-only",
   name: "suggest",
   usage: '>suggest "<your suggestion>"',
+  description: "Send a suggestion straight to the bot's developer.",
+  details:
+    "Have an idea for the bot? Wrap it in quotes and send it — it's logged with " +
+    "your name, server, and a timestamp for review, and you get a confirmation " +
+    "with the entry number. Suggestions persist in the database and a human-" +
+    "readable export. 500 characters max, one idea per message.",
   examples: ['>suggest "add a music command"'],
   cooldownSeconds: 10,
   prefixNames: ["suggest", "suggestion"],

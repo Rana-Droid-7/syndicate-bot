@@ -28,6 +28,12 @@ const command: Command = {
   category: "coolsies",
   surface: "both",
   usage: ">rps [rock|paper|scissors]",
+  description: "Rock Paper Scissors — instant, or with buttons.",
+  details:
+    "On the prefix: pick your weapon and it's settled instantly (`>rps rock`) — " +
+    "or omit it and the bot picks for you. On slash: a button duel with a 30-second " +
+    "window where only YOUR clicks count. Either way, one round, one winner, no " +
+    "crying about lag.",
   examples: [">rps rock", ">rps"],
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()

@@ -36,6 +36,13 @@ const command: Command = {
   surface: "prefix-only",
   name: "remindme",
   usage: '>remindme "<time>" <what to remember>',
+  description: "Set a reminder — natural language time, delivered here.",
+  details:
+    "Tell it when in quotes and what after: the time accepts natural language " +
+    "via chrono-node (\"in 20 minutes\", \"tomorrow 9am\", \"dec 25 3pm\"), and the " +
+    "bot pings you in the same channel when it's due. Reminders are persistent — " +
+    "they survive restarts and crashes, and anything that came due while the bot " +
+    "was down is delivered on next boot. Cap: 30 days out, 300 characters of text.",
   examples: ['>remindme "in 2 hours" stretch my legs', '>remindme "tomorrow 9am" team meeting'],
   cooldownSeconds: 5,
   prefixNames: ["remindme", "remind"],

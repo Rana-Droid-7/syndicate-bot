@@ -29,6 +29,11 @@ const command: Command = {
   category: "coolsies",
   surface: "both",
   usage: ">rate [@user]",
+  description: "Rate anything (or anyone) out of 10 — purely for fun.",
+  details:
+    "Mention someone (or yourself) and the bot hands out a score out of 10 with " +
+    "a matching star row and a completely scientific verdict. It's random every " +
+    "time — don't take it personally. Works with mentions or bare user IDs.",
   examples: [">rate @friend"],
   cooldownSeconds: 5,
   data: new SlashCommandBuilder()

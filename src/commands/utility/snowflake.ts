@@ -46,6 +46,12 @@ const command: Command = {
   category: "utility",
   surface: "both",
   usage: ">snowflake <id>",
+  description: "Decode any Discord ID to its creation date.",
+  details:
+    "Every Discord ID (user, server, channel, message, role) encodes the exact " +
+    "moment it was created. Paste one in and the bot decodes it to a live " +
+    "timestamp — handy for spotting alt accounts and checking \"how old is this " +
+    "server, really\".",
   cooldownSeconds: 3,
   data: new SlashCommandBuilder()
     .setName("snowflake")
