@@ -5,7 +5,8 @@ stages:
 
 verify:
   stage: verify
-  image: node:20
+  # Node 22: better-sqlite3@13 requires node >=22 (Node 20 segfaults).
+  image: node:22
   variables:
     # Placeholder credentials: several verification steps import the
     # config module, which requires these at load time. No real
