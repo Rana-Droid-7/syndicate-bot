@@ -1,4 +1,4 @@
-import { pbkdf2, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, pbkdf2, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { config } from "../core/config.js";
 import { log } from "../core/logger.js";
@@ -60,12 +60,10 @@ export async function verifyPassword(candidate: string): Promise<boolean> {
 }
 
 // ------------------------------------------------------------------
-// Sessions: token -> { createdAt, csrf, lastSeen }
+// Sessions: hashed-token -> { createdAt, csrf }
 // The MAP KEY is the SHA-256 of the cookie token, so a memory dump
 // can't be replayed as a valid cookie.
 // ------------------------------------------------------------------
-import { createHash } from "node:crypto";
-
 interface Session {
   csrf: string;
   createdAt: number;
@@ -145,6 +143,18 @@ export function clientIp(req: IncomingMessage): string {
   return req.socket.remoteAddress ?? "unknown";
 }
 
+/** Safely decodes one URL-encoded component; malformed sequences
+ *  (truncated UTF-8, stray %, bad hex) decode to a replacement
+ *  character instead of throwing — hostile or buggy input must
+ *  never crash the request handler. */
+function safeDecode(component: string): string {
+  try {
+    return decodeURIComponent(component.replace(/\+/g, " "));
+  } catch {
+    return "\u{FFFD}";
+  }
+}
+
 /** Parses a URL-encoded form body (application/x-www-form-urlencoded, capped). */
 export function parseFormBody(raw: Buffer): Map<string, string> {
   const params = new Map<string, string>();
@@ -153,8 +163,8 @@ export function parseFormBody(raw: Buffer): Map<string, string> {
     if (!pair) continue;
     const eq = pair.indexOf("=");
     if (eq === -1) continue;
-    const key = decodeURIComponent(pair.slice(0, eq).replace(/\+/g, " "));
-    const value = decodeURIComponent(pair.slice(eq + 1).replace(/\+/g, " "));
+    const key = safeDecode(pair.slice(0, eq));
+    const value = safeDecode(pair.slice(eq + 1));
     params.set(key, value);
   }
   return params;

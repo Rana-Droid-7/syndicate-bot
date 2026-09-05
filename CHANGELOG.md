@@ -2,6 +2,30 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
 
+## v0.6.1-beta — 2026-09-05 (dashboard polish + strict-audit round)
+
+The dashboard grows up, then the whole project goes through another multi-cycle strict audit.
+
+### Dashboard
+- **Inline editing**: every joke and 8-ball response has an ✎ edit view (textarea with the current text) and a Save action — O(1) row lookup, content-length validated, empty saves refused cleanly.
+- **Suggestion → implemented**: a third review state (★) alongside approve/reject, wired through the schema's existing status CHECK.
+- **Richer status card**: jokes/responses totals, active warnings across all guilds, users currently AFK.
+- **Hardening**:
+  - **CSP** `default-src 'none'` (+ form-action 'self', base-uri 'none') — even a hypothetical escaping bug can't execute script; style-src inline-only because everything is server-rendered.
+  - **HEAD /** health probe honoring auth (200 authed / 401 anonymous).
+  - **Malformed-form crash fixed**: truncated UTF-8 / stray `%` in POST bodies threw 500s through decodeURIComponent — the new safeDecode decodes hostile input to a replacement character instead (caught by the harness before it ever shipped enabled).
+  - Edit-form cleanup: stray hidden content field and unused `op` button removed.
+
+### Strict-audit round (3 cycles)
+- **package-lock.json was three releases stale** (0.5.3-beta) — resynced to 0.6.0-beta; version surfaces now include the lockfile.
+- **README intro was stale** — still headlined v0.5.4's story under a v0.6.0 title; rewritten to lead with the dashboard.
+- auth.ts: lying session comment fixed (`lastSeen` never existed), mid-file import hoisted.
+- Typos/stale-refs/TODO sweeps: clean. Route inventory: every form action in pages.ts maps to a real server route.
+
+### Tests
+- Dashboard harness: 29 → **43 checks** — edit flow end-to-end (view → save → persisted → empty refused → ghost refused), implement verb, CSP/nosniff/DENY header assertions, HEAD auth, malformed-body resilience, oversized-body resilience.
+- Full loop re-run clean: tsc, 37/37 unit, 119/119 integration, 24/24 lookup, 43/43 dashboard, dispatcher, timer.
+
 ## v0.6.0-beta — 2026-09-05 (local management dashboard)
 
 The bot now hosts its own browser console for the operator.

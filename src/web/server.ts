@@ -8,6 +8,10 @@ import { jokeService } from "../services/jokes.js";
 import { eightBallService } from "../services/eightball.js";
 import { suggestionRepository } from "../repositories/suggestions.js";
 import { reminderRepository } from "../repositories/reminders.js";
+import { warningRepository } from "../repositories/warnings.js";
+import { afkRepository } from "../repositories/afk.js";
+import { jokeRepository } from "../repositories/jokes.js";
+import { eightBallRepository } from "../repositories/eightball.js";
 import {
   clientIp,
   clearFailures,
@@ -20,7 +24,7 @@ import {
   verifyPassword,
   sweepSessions,
 } from "./auth.js";
-import { dashboardPage, loginPage, type CollectionItem, type DashboardData } from "./pages.js";
+import { dashboardPage, editPage, loginPage, type CollectionItem, type DashboardData } from "./pages.js";
 
 /**
  * The localhost management dashboard.
@@ -50,6 +54,10 @@ function setSecurityHeaders(res: ServerResponse): void {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
+  // Everything is inline-rendered server-side with no external
+  // assets — a strict CSP blocks ANY injected script from running
+  // even if an escaping bug ever slipped through.
+  res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'");
 }
 
 function send(res: ServerResponse, status: number, body: string): void {
@@ -115,6 +123,10 @@ function buildDashboardHtml(
         users: client.guilds?.cache?.reduce((acc, g) => acc + (g.memberCount ?? 0), 0) ?? 0,
         uptime: formatDuration(client.uptime ?? 0),
         reminders: reminderRepository.pending().length,
+        jokes: jokeService.countAll(),
+        responses: eightBallService.countAll(),
+        warnings: warningRepository.totalActive(),
+        afk: afkRepository.count(),
       },
     },
     csrf,
@@ -167,6 +179,14 @@ export function startDashboard(client: Client): void {
           return;
         }
         send(res, 404, loginPage("Not found.", null));
+        return;
+      }
+
+      // HEAD /: health probe for the dashboard itself (same auth as GET).
+      if (req.method === "HEAD") {
+        const authed = Boolean(sessionCsrf(sessionTokenOf(req)));
+        res.statusCode = authed ? 200 : 401;
+        res.end();
         return;
       }
 
@@ -236,6 +256,36 @@ export function startDashboard(client: Client): void {
         if (actionMatch) {
           const [, kind, verb, idStr] = actionMatch;
           const id = idStr ? Number(idStr) : null;
+
+          // Edit view: POST (with CSRF) rendering the edit form —
+          // keeps every state change behind the CSRF gate. O(1) row
+          // fetch by id (list+find would miss rows past the limit).
+          if ((kind === "joke" || kind === "response") && verb === "edit" && id !== null) {
+            const repo = kind === "joke" ? jokeRepository : eightBallRepository;
+            const row = repo.get(id);
+            if (!row) {
+              const html = buildDashboardHtml(req, client, { kind: "fail", text: `No #${id} to edit.` });
+              send(res, 200, html ?? loginPage(null, null));
+              return;
+            }
+            send(res, 200, editPage(kind, row.id, row.content, csrf, sessionTokenOf(req) ?? ""));
+            return;
+          }
+
+          // Save the edited content.
+          if ((kind === "joke" || kind === "response") && verb === "save" && id !== null) {
+            const svc = kind === "joke" ? jokeService : eightBallService;
+            const content = (form.get("content") ?? "").trim();
+            const banner = content
+              ? svc.edit(id, content)
+                ? ({ kind: "ok", text: `Saved #${id}.` } as const)
+                : ({ kind: "fail", text: `No #${id} to save.` } as const)
+              : ({ kind: "fail", text: "Empty content — nothing saved." } as const);
+            const html = buildDashboardHtml(req, client, banner);
+            send(res, 200, html ?? loginPage(null, null));
+            return;
+          }
+
           let banner: { kind: "ok" | "fail"; text: string };
 
           try {
@@ -317,9 +367,9 @@ function runAction(
 
   if (kind === "suggestion") {
     if (id === null) return fail("Missing ID.");
-    if (verb !== "approve" && verb !== "reject") return fail(`Unknown verb "${verb}".`);
-    const status = verb === "approve" ? "approved" : "rejected";
-    suggestionRepository.setStatus(id, status);
+    if (verb !== "approve" && verb !== "reject" && verb !== "implement") return fail(`Unknown verb "${verb}".`);
+    const status = verb === "approve" ? "approved" : verb === "reject" ? "rejected" : "implemented";
+    if (!suggestionRepository.setStatus(id, status)) return fail(`No suggestion #${id}.`);
     log.info("ADMIN", `Dashboard: suggestion #${id} marked ${status}.`);
     return ok(`Suggestion #${id} marked ${status}.`);
   }

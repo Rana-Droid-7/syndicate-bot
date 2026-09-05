@@ -158,6 +158,38 @@ console.log("\n=== CSRF ===");
 
   const logoutCsrfOnly = await req("POST", "/logout", { body: { csrf: "nope" }, cookie });
   report("logout with bad CSRF rejected", logoutCsrfOnly.status === 403);
+
+  const csp = await req("GET", "/", { cookie });
+  report("CSP header set (default-src 'none')", (csp.headers.get("content-security-policy") ?? "").includes("default-src 'none'"));
+  report("nosniff + DENY framing set",
+    (csp.headers.get("x-content-type-options") ?? "") === "nosniff" &&
+    (csp.headers.get("x-frame-options") ?? "") === "DENY");
+}
+
+// ============================================================
+console.log("\n=== HEAD / hardening ===");
+{
+  const headAnon = await req("HEAD", "/");
+  report("HEAD / unauthenticated -> 401 (health probe honors auth)", headAnon.status === 401);
+  const headAuth = await req("HEAD", "/", { cookie });
+  report("HEAD / authenticated -> 200", headAuth.status === 200);
+
+  // Malformed body: bad encoding must not crash the server.
+  const garbage = await fetch(BASE + "/action/joke/add", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
+    body: "csrf=" + csrf + "&content=%E0%A4%A", // truncated UTF-8 sequence
+  });
+  report("malformed URL-encoded body -> clean response, no crash", garbage.status < 500, `got ${garbage.status}`);
+
+  // Oversized body -> connection refused, server alive after.
+  const big = await fetch(BASE + "/action/joke/add", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
+    body: "csrf=" + csrf + "&content=" + "x".repeat(200_000),
+  }).catch(() => null);
+  const alive = await req("GET", "/", { cookie });
+  report("oversized body rejected, server still alive", alive.status === 200);
 }
 
 // ============================================================
@@ -171,11 +203,14 @@ console.log("\n=== ACTIONS (through the real service layer) ===");
   const added = jokeRepository.list(1)[0];
   report("joke really persisted", added?.content === "dash-added joke", `got: ${added?.content}`);
 
-  // Stored XSS attempt — must render escaped.
+  // Stored XSS attempt — must render escaped. This row doubles as
+  // the edit-flow target.
   const xss = await req("POST", "/action/response/add", { body: { content: `<script>alert(1)</script>`, csrf }, cookie });
   const homeAfter = await req("GET", "/", { cookie });
   report("stored XSS is escaped in HTML",
     xss.status === 200 && homeAfter.text.includes("&lt;script&gt;") && !homeAfter.text.includes("<script>alert"));
+  const { eightBallRepository } = await import("./dist/repositories/eightball.js");
+  const respId = eightBallRepository.list(1)[0].id;
 
   const disable = await req("POST", `/action/joke/disable/${added.id}`, { body: { csrf }, cookie });
   report("joke disable", disable.status === 200 && jokeRepository.get(added.id).enabled === 0);
@@ -187,11 +222,30 @@ console.log("\n=== ACTIONS (through the real service layer) ===");
   const ghost = await req("POST", "/action/joke/remove/999999", { body: { csrf }, cookie });
   report("removing nonexistent -> fail banner, no crash", ghost.status === 200 && ghost.text.includes("No joke"));
 
+  // ---- Edit flow (v0.6.1): view form, save content, XSS in textarea ----
+  const editableView = await req("POST", "/action/response/edit/" + respId, { body: { csrf }, cookie });
+  report("edit view renders with current content",
+    editableView.status === 200 && editableView.text.includes(`Edit Response #${respId}`));
+  const save = await req("POST", "/action/response/save/" + respId, { body: { content: "edited from dashboard", csrf }, cookie });
+  report("save updates the row", save.status === 200 && save.text.includes("Saved #"), save.text.slice(0, 80));
+  report("saved content really persisted", eightBallRepository.get(respId).content === "edited from dashboard");
+  const emptySave = await req("POST", "/action/response/save/" + respId, { body: { content: "   ", csrf }, cookie });
+  report("empty save refused cleanly", emptySave.status === 200 && emptySave.text.includes("Empty content"));
+  const ghostSave = await req("POST", "/action/joke/save/999999", { body: { content: "x", csrf }, cookie });
+  report("save nonexistent -> fail banner", ghostSave.status === 200 && ghostSave.text.includes("No #999999"));
+
   // Suggestions workflow
   suggestionRepository.add("999999999999999999", "222222222222222222", "review me");
   const sug = suggestionRepository.recent(1)[0];
   const approve = await req("POST", `/action/suggestion/approve/${sug.id}`, { body: { csrf }, cookie });
   report("suggestion approve", approve.status === 200 && suggestionRepository.recent(1)[0].status === "approved");
+  const implement = await req("POST", `/action/suggestion/implement/${sug.id}`, { body: { csrf }, cookie });
+  report("suggestion implement (new verb)", implement.status === 200 && suggestionRepository.recent(1)[0].status === "implemented");
+
+  // Status card carries the new counters.
+  const statusHome = await req("GET", "/", { cookie });
+  report("status card shows jokes/responses counts", statusHome.text.includes("Jokes / responses"));
+  report("status card shows warnings + afk", statusHome.text.includes("Active warnings") && statusHome.text.includes("Users AFK now"));
 
   // Hostile suggestion text renders escaped on the dashboard.
   suggestionRepository.add("999999999999999999", "222222222222222222", `<img src=x onerror=alert(1)>`);

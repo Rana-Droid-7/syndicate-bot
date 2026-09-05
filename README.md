@@ -1,17 +1,23 @@
-# Syndicate Bot — v0.6.0-beta
+# Syndicate Bot — v0.6.1-beta
 
 A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
 moderation, admin, and developer tiers — built with discord.js +
 TypeScript on a real SQL database.
 
-v0.5.4 is the **two-lane release**: one prefix, one rule — **public
-commands live exclusively on the prefix defined in your `.env`**
-(default `>`; change it to `!` and every menu, usage line, and
-suggestion follows instantly — nothing is hardcoded). **Slash is
-exclusively for moderation, admin, and developer tools**, where
-Discord's structured input and native permission gating belong. The
-prefix itself is boot-validated: exactly one character, no whitespace,
-never `/` — anything else refuses to start with a clear reason.
+v0.6.1 polishes the **local management dashboard**: a browser console the
+bot hosts at localhost — manage jokes, 8-ball responses, and
+suggestions; watch live stats; reboot or shut down — all behind
+PBKDF2 auth, rate-limited login, and CSRF-protected sessions, and
+bound to 127.0.0.1 so nothing on the network can reach it.
+
+It builds on v0.5.4's two-lane rule: **public commands live
+exclusively on the prefix defined in your `.env`** (default `>`;
+change it to `!` and every menu, usage line, and suggestion follows
+instantly — nothing is hardcoded). **Slash is exclusively for
+moderation, admin, and developer tools**, where Discord's structured
+input and native permission gating belong. The prefix itself is
+boot-validated: exactly one character, no whitespace, never `/` —
+anything else refuses to start with a clear reason.
 
 ## Setup
 
@@ -90,7 +96,7 @@ mean **>help**?").
 ### 🔑 Developer — slash only, trusted user IDs only
 `/boot` — DMs you a private Reboot/Shutdown/Cancel panel.
 
-## Local dashboard (v0.6.0)
+## Local dashboard (v0.6)
 
 A browser-based management console, hosted by the bot itself —
 **localhost only** (binds 127.0.0.1; nothing on the network can reach

@@ -15,6 +15,17 @@ interface ReleaseNotes {
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
   {
+    version: "0.6.1-beta",
+    date: "2026-09-05",
+    highlights: [
+      "**Dashboard: inline editing** — edit any joke or 8-ball response right in the browser",
+      "**Suggestion → implemented** — a third review state alongside approve/reject",
+      "**Richer status** — jokes/responses/warnings/AFK counters live on the dashboard",
+      "**Harder security** — strict CSP, malformed-form crash fixed, HEAD health probe",
+      "package-lock resynced (it had drifted 3 releases), README intro refreshed",
+    ],
+  },
+  {
     version: "0.6.0-beta",
     date: "2026-09-05",
     highlights: [

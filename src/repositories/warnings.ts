@@ -58,6 +58,11 @@ export const warningRepository = {
     ).n;
   },
 
+  /** Total active warnings across all guilds (dashboard status card). */
+  totalActive(): number {
+    return (getDb().prepare(`SELECT COUNT(*) AS n FROM warnings WHERE active = 1`).get() as { n: number }).n;
+  },
+
   activeFor(guildId: string, userId: string): WarningRow[] {
     return getDb()
       .prepare(

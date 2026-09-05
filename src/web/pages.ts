@@ -131,6 +131,10 @@ function collectionCard(
         <span class="content">${escapeHtml(item.content)}</span>
         <span class="state ${item.enabled ? "" : "off"}">${item.enabled ? "in rotation" : "disabled"}</span>
         <span class="row-actions">
+          <form method="post" action="/action/${kind}/edit/${item.id}">
+            <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
+            <button class="subtle" type="submit" title="Edit this ${escapeHtml(kind === "joke" ? "joke" : "response")}">✎</button>
+          </form>
           <form method="post" action="/action/${kind}/${item.enabled ? "disable" : "enable"}/${item.id}">
             <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
             <button class="subtle" type="submit" title="${item.enabled ? "Take it out of rotation" : "Put it back in rotation"}">${item.enabled ? "⏸" : "▶"}</button>
@@ -145,7 +149,7 @@ function collectionCard(
     .join("");
   return `
   <div class="card">
-    <h2>${emoji} ${escapeHtml(title)} <span class="count">${items.length} total</span></h2>
+    <h2>${emoji} ${escapeHtml(title)} <span class="count">${items.length} shown</span></h2>
     <form class="inline" method="post" action="/action/${kind}/add">
       <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
       <input type="text" name="content" maxlength="${maxLength}" placeholder="${escapeHtml(addPlaceholder)}" required>
@@ -157,12 +161,50 @@ function collectionCard(
   </div>`;
 }
 
+/** The edit view for one item: shows the current text in a textarea, Save/Cancel. */
+export function editPage(
+  kind: "joke" | "response",
+  id: number,
+  content: string,
+  csrf: string,
+  sessionToken: string,
+): string {
+  const noun = kind === "joke" ? "Joke" : "Response";
+  return layout(
+    `Edit ${noun}`,
+    `<main>
+      <div class="card" style="max-width:640px;margin:0 auto">
+        <h2>✎ Edit ${escapeHtml(noun)} #${id}</h2>
+        <form method="post" action="/action/${kind}/save/${id}">
+          <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
+          <textarea name="content" rows="4" maxlength="${kind === "joke" ? 500 : 300}" required
+            style="width:100%;background:#232333;border:1px solid #2c2c40;color:#e4e4ef;border-radius:8px;padding:10px;font-size:13px;font-family:inherit;resize:vertical">${escapeHtml(content)}</textarea>
+          <div class="inline" style="margin-top:12px">
+            <button type="submit">💾 Save</button>
+            <a href="/" style="align-self:center;margin-left:8px;font-size:13px">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </main>`,
+    { sessionToken, csrf },
+  );
+}
+
 export interface DashboardData {
   jokes: CollectionItem[];
   responses: CollectionItem[];
   suggestions: { id: number; content: string; status: string; author: string; at: string }[];
   banner: { kind: "ok" | "fail"; text: string } | null;
-  stats: { guilds: number; users: number; uptime: string; reminders: number };
+  stats: {
+    guilds: number;
+    users: number;
+    uptime: string;
+    reminders: number;
+    jokes: number;
+    responses: number;
+    warnings: number;
+    afk: number;
+  };
 }
 
 export function dashboardPage(data: DashboardData, csrf: string, sessionToken: string): string {
@@ -182,6 +224,10 @@ export function dashboardPage(data: DashboardData, csrf: string, sessionToken: s
             <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
             <button class="subtle" type="submit" title="Mark rejected">✖</button>
           </form>
+          <form method="post" action="/action/suggestion/implement/${s.id}">
+            <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
+            <button class="subtle" type="submit" title="Mark implemented">★</button>
+          </form>
         </span>
       </div>`,
     )
@@ -199,6 +245,9 @@ export function dashboardPage(data: DashboardData, csrf: string, sessionToken: s
           <div class="row"><span class="content">Servers</span><span class="state">${data.stats.guilds}</span></div>
           <div class="row"><span class="content">Members (combined)</span><span class="state">${data.stats.users}</span></div>
           <div class="row"><span class="content">Uptime</span><span class="state">${escapeHtml(data.stats.uptime)}</span></div>
+          <div class="row"><span class="content">Jokes / responses</span><span class="state">${data.stats.jokes} / ${data.stats.responses}</span></div>
+          <div class="row"><span class="content">Active warnings</span><span class="state">${data.stats.warnings}</span></div>
+          <div class="row"><span class="content">Users AFK now</span><span class="state">${data.stats.afk}</span></div>
           <div class="row"><span class="content">Pending reminders</span><span class="state">${data.stats.reminders}</span></div>
         </div>
       </div>
