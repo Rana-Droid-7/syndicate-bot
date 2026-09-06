@@ -110,6 +110,7 @@ const command: Command = {
       if (warnings.length === 0) {
         await interaction.reply({
           embeds: [baseEmbed().setDescription(`**${targetUser.tag}** has no warnings.`)],
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -120,6 +121,8 @@ const command: Command = {
       // truncates reasons and drops the oldest entries if needed.
       const list = warningService.formatList(warnings);
 
+      // Ephemeral: a member's disciplinary record is moderator business —
+      // it must not post in the channel for the whole server to read.
       await interaction.reply({
         embeds: [
           baseEmbed()
@@ -132,6 +135,7 @@ const command: Command = {
                   : `${list.totalCount} total warning(s)`,
             }),
         ],
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -141,6 +145,7 @@ const command: Command = {
       if (existing.length === 0) {
         await interaction.reply({
           embeds: [baseEmbed().setDescription(`**${targetUser.tag}** had no warnings to clear.`)],
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }

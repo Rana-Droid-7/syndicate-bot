@@ -54,3 +54,6 @@ jobs:
 
       - name: Embed output verification (Discord hard limits)
         run: node verify-embeds.mjs
+
+      - name: Documentation truth verification
+        run: node verify-docs.mjs

@@ -35,7 +35,7 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 ### New verification infrastructure (wired into `npm run verify` + GitHub + GitLab CI)
 - **`verify-embeds.mjs` (68 checks)** — renders every embed the bot can produce through discord.js' own serializer and validates each against Discord's hard limits (6,000 total / 4,096 description / 1,024 field value / 256 title / 25 fields), with maximal hostile inputs and the help visibility gates.
 - `verify-dispatcher.mjs` now uses a self-cleaning throwaway database (the old `final.db` was recreated and abandoned on every run).
-- **Counts**: 40 unit + 156 integration/attack + 76 embed + 25 lookup + 3 timer checks + dispatcher torture — plus relation scans (alias collisions, usage-vs-alias consistency, example dispatch, suggestion coverage, slash deployment parity, tag-mirroring coverage) run during the audit.
+- **Counts**: 40 unit + 157 integration/attack + 76 embed + 25 lookup + 27 doc + 3 timer checks + dispatcher torture — plus relation scans (alias collisions, usage-vs-alias consistency, example dispatch, suggestion coverage, slash deployment parity, tag-mirroring coverage) run during the audit.
 - Three harness checks that passed vacuously (a reply-or-throw disjunction, a masked-embed poll check, a replica-logic choose test) were rebuilt to assert the exact contracts.
 
 ### Cycle 4 — harness pollution + enforced consistency
@@ -61,6 +61,14 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 - Chrono date edges verified: feb 30/29-non-leap/dec 32 all return null (clean errors); leap-year Feb 29 resolves; negative deltas clamp via forwardDate.
 - Copy truthfulness verified: the "Ships with 19 classic responses" claim matches migration 002's actual seed count.
 - Harness hygiene: verify-embeds dead scaffolding removed (`built` var, SKIP stub — replaced by a real timestamp case).
+
+### Cycle 7 — moderation polish, docs that can't lie, long-run hygiene
+- **`/warn list` is now ephemeral.** A member's full disciplinary record used to post in the channel for the whole server to read — the lone moderation output that wasn't treated as sensitive. The record (and the "no warnings"/"nothing to clear" notices) now reply ephemeral to the invoking moderator; `/warn add` stays public like kick/ban/timeout (visible moderation action). The visibility matrix — errors and records ephemeral, actions public — is now consistent across all six moderation commands.
+- **Strict log routing** (this session's feature): 🟢/🔴 lifecycle embeds go to the dev-log channel ONLY; the raw operational mirror goes to the private bot-logs channel ONLY — no cross-fallback, pinned in CI with a subprocess matrix.
+- **New harness: `verify-docs.mjs` (27 checks)** — every claim the docs make about the codebase is derived from live state and pinned: versions (README heading, bug-template placeholder, config.ts, CHANGELOG newest entry, in-chat RELEASES), command listings and counts per category vs the loaded registry, verify-count claims (spawned from the real harnesses, so they can never drift again), the architecture tree vs the actual `src/` directories, the persistence table vs the real schema's tables, `.env.example` vs every key config.ts reads, and PR/MR template parity. Wired into `npm run verify` + both CI files.
+- **Docs truthified**: README's architecture tree had silently drifted for several releases (missing `collection`/`shutdown` in lib, `eightball` absent from services/repositories AND the persistence table, no mention of `logSink`, `types/`, or `deploy-commands.ts`) — all fixed and now enforced. `guilds`/`users` documented as the structural FK parents they are.
+- **Long-run stability sweep** (the bot runs unattended): every collector carries a `time:` bound, every sweep interval is unref'd, cooldown/AFK-notice maps have periodic sweeps, the AFK index drops with guildDelete, and the logSink backoff can't retry-loop — no unbounded growth surface remains.
+- Runtime floor is Node 24 LTS (Krypton) everywhere (engines, @types/node 24, both CI images, comments).
 
 ### Housekeeping
 - README: privileged-intent setup step (first boot failed with `Used disallowed intents` for anyone following it), accurate verify counts, changelog/embed harness in the development section.

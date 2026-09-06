@@ -28,3 +28,4 @@ verify:
     - node verify-dispatcher.mjs
     - node verify-integration.mjs
     - node verify-embeds.mjs
+    - node verify-docs.mjs

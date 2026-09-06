@@ -114,26 +114,32 @@ SQL; services own business logic; commands only coordinate.
 
 | Data | Table | Notes |
 |---|---|---|
+| Guilds / users (structural) | `guilds`, `users` | FK parents for cascade cleanup; not user-facing rows |
 | AFK status | `afk` | per-guild, auto-cleared by activity or `>afk off` |
 | Reminders | `reminders` | restored on every startup; a 60s sweep catches strays |
 | Warnings | `warnings` | soft-capped at 25 active per user (oldest roll off, transactionally) |
 | Suggestions | `suggestions` | SQL + human-readable `data/suggestions.txt` export |
 | Jokes | `jokes` | enable/disable, usage counts, developer-attributed |
+| 8-ball responses | `eightball` | enable/disable, usage counts, developer-attributed |
 
 ## Architecture
 
 ```
 src/
-  core/         config, logger (+ private-channel mirror), client
+  core/         config, logger, logSink (channel mirror), client
   commands/     utility/ coolsies/ moderation/ admin/ owner/
   events/       ready, interactionCreate, messageCreate, guildCreate, guildDelete
   handlers/     command + event loaders (load-time validation)
   lib/          embeds, validation, cooldowns, errors, permissions, confirm,
-                safeMath, safeTimeout, safeError, suggest, help, format, invite, devlog
-  services/     afk, reminders, warnings, suggestions, jokes  (business logic)
-  repositories/ afk, reminders, warnings, suggestions, jokes  (SQL only)
+                safeMath, safeTimeout, safeError, suggest, help, format, invite,
+                devlog, collection (shared joke/8ball management), shutdown
+  services/     afk, reminders, warnings, suggestions, jokes, eightball (business logic)
+  repositories/ afk, reminders, warnings, suggestions, jokes, eightball, guilds,
+                shared (SQL only)
   database/     client (WAL, migrations, integrity check)
   workers/      mathWorker (isolated /calculate thread)
+  types/        the Command contract
+  deploy-commands.ts  slash registration (privileged lane only)
   tests/        unit tests (npm test)
 ```
 
@@ -153,13 +159,14 @@ else touches SQL.
 ## Development
 
 - `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine, regression pins)
-- `npm run verify` — everything: strict typecheck, build, **40** unit tests, and **five** verification harnesses (**156** integration/attack + **76** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
+- `npm run verify` — everything: strict typecheck, build, **40** unit tests, and **six** verification harnesses (**157** integration/attack + **76** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
 - [CHANGELOG.md](CHANGELOG.md) — every release's full history; `changelog` in-chat shows the recent highlights
 - `verify_timer.mjs` — chained-timer regression (the >24.8-day setTimeout bug)
 - `verify_lookup.mjs` — prefix lookup/suggestion scenarios
 - `verify-dispatcher.mjs` — prefix dispatch edge-case torture
 - `verify-integration.mjs` — full command + attack harness against a throwaway database
 - `verify-embeds.mjs` — renders every embed the bot can produce and validates each against Discord's hard limits (6000/4096/1024/256/25)
+- `verify-docs.mjs` — every claim the docs make about the codebase (versions, counts, file trees, table lists) derived from live state — docs can't silently lie in CI
 - Load-time errors are intentional: a duplicate command name or missing metadata refuses to boot the bot instead of silently dropping it.
 - Error taxonomy: every failure is one typed class, rendered by one shared dispatcher path — input mistakes never consume the cooldown (`cooldowns.refund()`).
 
