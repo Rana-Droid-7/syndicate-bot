@@ -49,6 +49,9 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 - **Fuzz torture clean**: 5,000 chaos strings through the quote parser (zero crashes, 21ms), 39 hostile inputs through every prefix command via real dispatch (every failure is a taxonomy error — zero unhandled throws), math-worker boundaries (huge powers, infinity, complex results, precision edges) all contained by the sandbox, and the slash-lane error reply matrix (replied/defered × taxonomy/generic/database) routes exactly one correct reply per cell.
 - Poll vote chains serialize without display regressions under 50 rapid votes; confirm dialogs resolve exactly once under late-click/expiry races.
 
+### Runtime
+- **Node.js floor raised to 24 (LTS "Krypton")**: engines, both CI images, and `@types/node` moved from 22 to 24. better-sqlite3@13 needs >=22 — 24 is the same requirement on the active LTS line with the longer security runway. No code changes were needed: the codebase is pure ESM on stable APIs (worker threads, node:test, better-sqlite3), and the full verify suite passes unchanged.
+
 ### Housekeeping
 - README: privileged-intent setup step (first boot failed with `Used disallowed intents` for anyone following it), accurate verify counts, changelog/embed harness in the development section.
 - Stale references cleaned: bug template's `0.5.1-beta` placeholder and "right-click context menu" option (that surface was removed in 0.5.4).

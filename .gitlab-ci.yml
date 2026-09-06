@@ -5,8 +5,9 @@ stages:
 
 verify:
   stage: verify
-  # Node 22: better-sqlite3@13 requires node >=22 (Node 20 segfaults).
-  image: node:22
+  # Node 24 LTS (Krypton): better-sqlite3@13 requires node >=22
+  # (Node 20 segfaults). 24 is the active LTS line.
+  image: node:24
   variables:
     # Placeholder credentials: several verification steps import the
     # config module, which requires these at load time. No real

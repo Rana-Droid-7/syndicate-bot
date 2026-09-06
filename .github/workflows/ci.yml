@@ -23,9 +23,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Node 22 LTS: better-sqlite3@13 requires node >=22 — Node 20
-          # installs an incompatible binary that segfaults on first use.
-          node-version: 22
+          # Node 24 LTS (Krypton): better-sqlite3@13 requires node >=22
+          # (Node 20 segfaults). 24 is the active LTS line — same
+          # requirement, longer security runway.
+          node-version: 24
           cache: npm
 
       - run: npm ci
