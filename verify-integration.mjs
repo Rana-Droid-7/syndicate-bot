@@ -715,6 +715,61 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
     }
   }
 
+  // --- Cycle-5: 429 detection uses structured signals, not just text ---
+  {
+    // Exercise the real deliver() path: an overdue reminder against a
+    // channel that throws a status-429 error must stay PENDING (the
+    // sweep retries); a hard error must go terminal (failed).
+    const { reminderService } = await import("./dist/services/reminders.js");
+    const { reminderRepository } = await import("./dist/repositories/reminders.js");
+    const rateLimitClient = {
+      channels: { fetch: async () => ({
+        isTextBased: () => true,
+        // discord.js shape: HTTP 429 on .status
+        send: async () => { throw Object.assign(new Error("Too many requests"), { status: 429 }); },
+      }) },
+    };
+    const hardErrClient = {
+      channels: { fetch: async () => ({
+        isTextBased: () => true,
+        send: async () => { throw new Error("Missing Permissions"); },
+      }) },
+    };
+    const rlId = await reminderService.create(rateLimitClient, gid, "555555555555555555", "161616161616161616", "429 probe", Date.now() - 4000);
+    await new Promise((r) => setTimeout(r, 300));
+    const rlRow = reminderRepository.get(rlId);
+    report("reminders: status-429 send stays pending (sweep retries)",
+      rlRow?.status === "pending", `got ${rlRow?.status}`);
+    const hardId = await reminderService.create(hardErrClient, gid, "555555555555555555", "171717171717171717", "hard-err probe", Date.now() - 4000);
+    await new Promise((r) => setTimeout(r, 300));
+    const hardRow = reminderRepository.get(hardId);
+    report("reminders: hard send error goes terminal (failed)",
+      hardRow?.status === "failed", `got ${hardRow?.status}`);
+    for (const row of reminderRepository.pending()) reminderRepository.markDelivered(row.id);
+  }
+
+  // --- Cycle-5: concurrency coherence through the real services ---
+  {
+    const { warningService } = await import("./dist/services/warnings.js");
+    const { reminderService } = await import("./dist/services/reminders.js");
+    const { reminderRepository } = await import("./dist/repositories/reminders.js");
+    const nullClient = { channels: { fetch: async () => null } };
+
+    // 50 interleaved warn adds — the transactional cap must land at exactly 25
+    await Promise.all(Array.from({ length: 50 }, (_, i) =>
+      Promise.resolve().then(() => warningService.add(gid, "race-u1", "111111111111111111", `w${i}`))));
+    const capped = warningService.activeFor(gid, "race-u1").length;
+    report("race: 50 concurrent warn adds land on the exact 25 cap", capped === 25, `got ${capped}`);
+    warningService.clearActive(gid, "race-u1");
+
+    // 40 interleaved reminder creates — cap 25, no duplicates
+    await Promise.all(Array.from({ length: 40 }, (_, i) =>
+      reminderService.create(nullClient, gid, "555555555555555555", "race-u2", `r${i}`, Date.now() + 600000).catch(() => null)));
+    const pend = reminderRepository.pendingCountFor(gid, "race-u2");
+    report("race: 40 concurrent reminder creates land on the exact 25 cap", pend === 25, `got ${pend}`);
+    for (const row of reminderRepository.pending()) reminderRepository.markDelivered(row.id);
+  }
+
   // --- Cycle-4: repo-wide consistency pins (run in CI from now on) ---
   {
     const { readFileSync: read } = await import("node:fs");

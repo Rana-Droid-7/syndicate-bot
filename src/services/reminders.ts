@@ -142,16 +142,13 @@ async function deliver(client: Client, id: number): Promise<void> {
       reminderRepository.markDelivered(id);
       log.info("TIMER", `Delivered reminder #${id} to ${reminder.user_id} in channel ${reminder.channel_id}.`);
     } catch (error) {
-      // A Discord rate limit (429 / "rate limited by this route") is
-      // TRANSIENT — e.g. a boot-time burst of overdue reminders.
-      // Marking the row failed would permanently kill a reminder that
-      // only needed a retry. Leave it pending: the 60s sweep picks it
-      // up again once the window clears. Only hard errors (missing
-      // perms, deleted message surface) go terminal.
-      const messageText = error instanceof Error ? error.message.toLowerCase() : "";
-      const isRateLimit =
-        messageText.includes("rate limit") || messageText.includes("429");
-      if (isRateLimit) {
+      // A Discord rate limit (429) is TRANSIENT — e.g. a boot-time
+      // burst of overdue reminders. Marking the row failed would
+      // permanently kill a reminder that only needed a retry. Leave
+      // it pending: the 60s sweep picks it up again once the window
+      // clears. Only hard errors (missing perms, deleted surface) go
+      // terminal.
+      if (isRateLimitError(error)) {
         log.warn("TIMER", `Reminder #${id} hit a rate limit — staying pending, the sweep will retry.`);
         return;
       }
@@ -170,3 +167,20 @@ async function deliver(client: Client, id: number): Promise<void> {
 // IDs with a delivery attempt currently in flight. Module-scoped so
 // timers and the sweep share the same view.
 const delivering = new Set<number>();
+
+/**
+ * Rate-limit detection for a failed channel send. Structured signals
+ * first — discord.js throws DiscordAPIError with .status (HTTP 429)
+ * and/or .code (rate-limit responses carry specific codes); message-
+ * text matching is the fallback because API error wording can change
+ * between versions.
+ */
+function isRateLimitError(error: unknown): boolean {
+  if (error && typeof error === "object") {
+    const e = error as { status?: unknown; code?: unknown; message?: unknown };
+    if (e.status === 429) return true;
+    if (typeof e.code === "string" && /^RATE_LIMIT/i.test(e.code)) return true;
+  }
+  const messageText = error instanceof Error ? error.message.toLowerCase() : "";
+  return messageText.includes("rate limit") || messageText.includes("429");
+}

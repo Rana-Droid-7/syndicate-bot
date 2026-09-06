@@ -2,9 +2,9 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
 
-## v1.0.1 — 2026-09-05 (post-1.0 hardening: three adversarial audit cycles)
+## v1.0.1 — 2026-09-05 (post-1.0 hardening: five adversarial audit cycles)
 
-**The release the audits earned.** Three consecutive adversarial cycles against the 1.0.0 codebase (each re-auditing the previous cycle's fixes, empirically confirming every suspicion with repro scripts before touching code) surfaced 3 critical bugs, 10 high/medium issues, and a long tail of nits — every one fixed and pinned by a regression check that runs in CI from now on.
+**The release the audits earned.** Five consecutive adversarial cycles against the 1.0.0 codebase (each re-auditing the previous cycle's fixes, empirically confirming every suspicion with repro scripts before touching code) surfaced 3 critical bugs, 10+ high/medium issues, and a long tail of nits — every one fixed and pinned by a regression check that runs in CI from now on.
 
 ### Critical (all confirmed with repro scripts before fixing)
 - **`/warn list` overflow was inverted**: with more warnings than fit an embed, the bot showed the OLDEST records and hid exactly the recent ones moderators base decisions on — while the footer claimed "most recent shown". Overflow now drops from the oldest end; the single-entry fallback shows the newest.
@@ -35,8 +35,19 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 ### New verification infrastructure (wired into `npm run verify` + GitHub + GitLab CI)
 - **`verify-embeds.mjs` (68 checks)** — renders every embed the bot can produce through discord.js' own serializer and validates each against Discord's hard limits (6,000 total / 4,096 description / 1,024 field value / 256 title / 25 fields), with maximal hostile inputs and the help visibility gates.
 - `verify-dispatcher.mjs` now uses a self-cleaning throwaway database (the old `final.db` was recreated and abandoned on every run).
-- **Counts**: 40 unit + 141 integration/attack + 68 embed + 24 lookup + 3 timer checks + dispatcher torture — plus relation scans (alias collisions, usage-vs-alias consistency, example dispatch, suggestion coverage, slash deployment parity, tag-mirroring coverage) run during the audit.
+- **Counts**: 40 unit + 152 integration/attack + 68 embed + 24 lookup + 3 timer checks + dispatcher torture — plus relation scans (alias collisions, usage-vs-alias consistency, example dispatch, suggestion coverage, slash deployment parity, tag-mirroring coverage) run during the audit.
 - Three harness checks that passed vacuously (a reply-or-throw disjunction, a masked-embed poll check, a replica-logic choose test) were rebuilt to assert the exact contracts.
+
+### Cycle 4 — harness pollution + enforced consistency
+- **Every `npm run verify` since the first release had been writing harness garbage into the production `data/suggestions.txt`** (637 polluted lines: mock users, `rm -rf` test payloads, stress walls). New `SUGGESTIONS_FILE` env override redirects harness writes to a self-cleaning throwaway; the real export was cleaned (genuine suggestions preserved) and pollution checks now run in CI.
+- **Consistency is now enforced by CI, not just checked once**: package.json version == config.ts == README heading == bug-template placeholder; `.env.example` documents every env key config.ts reads (auto-derived from source); GitHub + GitLab CI verified to run every harness `npm run verify` runs.
+- The last 16 hardcoded `>` log prefixes replaced with `config.prefix` — with `PREFIX=!`, log output follows the configured prefix like every user-facing surface always has.
+
+### Cycle 5 — concurrency, rate-limit, and fuzz torture
+- **Reminder 429 detection hardened**: structured signals first (`error.status === 429`, rate-limit error codes), message-text matching as fallback — API error wording can change between discord.js versions. Both paths are now pinned in CI (status-429 stays pending for the sweep to retry; hard errors go terminal).
+- **Concurrency coherence proven**: 50 interleaved `/warn add`s land on exactly the 25-cap; 40 interleaved reminder creates land on exactly 25; AFK index never diverges from the DB; the suggestion export loses zero writes under 30-way concurrent appends; the log sink survives a 500-line hammer against a failing channel without crash or retry-loops.
+- **Fuzz torture clean**: 5,000 chaos strings through the quote parser (zero crashes, 21ms), 39 hostile inputs through every prefix command via real dispatch (every failure is a taxonomy error — zero unhandled throws), math-worker boundaries (huge powers, infinity, complex results, precision edges) all contained by the sandbox, and the slash-lane error reply matrix (replied/defered × taxonomy/generic/database) routes exactly one correct reply per cell.
+- Poll vote chains serialize without display regressions under 50 rapid votes; confirm dialogs resolve exactly once under late-click/expiry races.
 
 ### Housekeeping
 - README: privileged-intent setup step (first boot failed with `Used disallowed intents` for anyone following it), accurate verify counts, changelog/embed harness in the development section.

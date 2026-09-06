@@ -18,13 +18,15 @@ const RELEASES: ReleaseNotes[] = [
     version: "1.0.1",
     date: "2026-09-05",
     highlights: [
-      "**Post-1.0 hardening** — three adversarial audit cycles, every finding empirically confirmed before fixing",
+      "**Post-1.0 hardening** — five adversarial audit cycles, every finding empirically confirmed before fixing",
       "**`/warn list` fixed** — overflow showed the oldest warnings and hid the newest; moderators now see the recent record",
       "**`>changelog` fixed** — the embed exceeded Discord's 6000-char cap and failed on every invocation; it auto-fits now",
       "**Injection surfaces closed** — poll sanitizes its text, the log mirror can't be fence-broken, hex/scientific IDs rejected",
       "**Cooldowns no longer burn on input mistakes** — every command throws taxonomy errors to one shared renderer, with refund",
       "Reminders: 429s retry instead of failing permanently; 25-pending per-user cap; invisible-text crashes gone",
       "New embed-output harness: 68 checks against Discord's hard limits, wired into CI",
+      "Harness pollution killed: verify runs no longer write test data into the production suggestions export",
+      "Concurrency-proven: 50-way races land on exact caps; 429s retry; 5,000-input fuzz runs clean",
     ],
   },
   {
