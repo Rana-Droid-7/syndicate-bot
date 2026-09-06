@@ -2,12 +2,39 @@
  * Extensive tests for the prefix lookup system (lib/suggest.ts).
  * Run: node verify_lookup.mjs   (requires `npm run build` first)
  *
+ * The candidate set is derived from the REAL loaded command registry
+ * (loadCommands on a real SyndicateClient) — never a hand-maintained
+ * fixture. Cycle 6 of the audit caught the previous hand-list
+ * drifting from reality: it claimed `roll` had a `dice` alias
+ * (dice is its own command), listed `poll` as slash-only (prefix
+ * since v0.5.4), and predated every Coolsies command — and all its
+ * tests still passed, because it only tested its own fantasy.
+ *
  * Tests the exact user-facing scenarios plus edge cases:
  *   ">a"  -> lists every command starting with "a", each with usage
  *   ">se" -> lists serverinfo, setnick, suggest ... with usage
  *   ">halp" -> typo suggestion for /help with usage
  *   visibility, caps, digits, boundaries, caps, empty results...
  */
+
+import { rmSync, existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TEST_DB = path.join(__dirname, "data", "lookup-test.db");
+for (const suffix of ["", "-wal", "-shm"]) {
+  if (existsSync(TEST_DB + suffix)) rmSync(TEST_DB + suffix);
+}
+process.env.DATABASE_FILE = "data/lookup-test.db";
+process.env.DISCORD_TOKEN = "x";
+process.env.CLIENT_ID = "123456789012345678";
+
+await import("./dist/database/client.js").then((m) => m.runMigrations());
+const { loadCommands } = await import("./dist/handlers/commandHandler.js");
+const { SyndicateClient } = await import("./dist/core/client.js");
+const realClient = new SyndicateClient({ intents: [] });
+await loadCommands(realClient);
 
 const { findStartsWithMatches, findClosestMatch, formatLookupDescription, editDistance, MAX_SUGGESTION_DISTANCE } =
   await import("./dist/lib/suggest.js");
@@ -29,57 +56,22 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-// Build a realistic candidate set mirroring the live bot's commands:
-// name -> [names], slashOnly flag, category
-function makeCandidates() {
-  const defs = [
-    { name: "help", aliases: ["help", "commands", "h"], prefix: true },
-    { name: "ping", aliases: ["ping", "latency"], prefix: true },
-    { name: "bot", aliases: ["bot", "botinfo", "about"], prefix: true },
-    { name: "suggest", aliases: ["suggest", "suggestion"], prefix: true },
-    { name: "userinfo", aliases: ["userinfo", "whois", "ui"], prefix: true },
-    { name: "serverinfo", aliases: ["serverinfo", "guildinfo", "si"], prefix: true },
-    { name: "avatar", aliases: ["avatar", "av", "pfp"], prefix: true },
-    { name: "banner", aliases: ["banner"], prefix: true },
-    { name: "timestamp", aliases: ["timestamp", "ts"], prefix: true },
-    { name: "snowflake", aliases: ["snowflake", "decode"], prefix: true },
-    { name: "afk", aliases: ["afk"], prefix: true },
-    { name: "remindme", aliases: ["remindme", "remind"], prefix: true },
-    { name: "roll", aliases: ["roll", "dice"], prefix: true },
-    { name: "calculate", aliases: ["calculate", "calc", "math"], prefix: true },
-    { name: "invite", aliases: ["invite"], prefix: true },
-    { name: "changelog", aliases: ["changelog", "changes"], prefix: true },
-    { name: "poll", aliases: [], prefix: false },
-    { name: "kick", aliases: [], prefix: false },
-    { name: "ban", aliases: [], prefix: false },
-    { name: "timeout", aliases: [], prefix: false },
-    { name: "warn", aliases: [], prefix: false },
-    { name: "purge", aliases: [], prefix: false },
-    { name: "announce", aliases: [], prefix: false },
-    { name: "setnick", aliases: [], prefix: false },
-    { name: "slowmode", aliases: [], prefix: false },
-    { name: "boot", aliases: [], prefix: false },
-  ];
+// The candidate set IS the live registry — the same list the real
+// dispatcher matches against (client.suggestionCandidates is built by
+// the loader from every loaded command's canonical name + aliases).
+const cands = realClient.suggestionCandidates;
 
-  return defs.map((d) => ({
-    command: {
-      // v0.5.4 Command metadata shape: prefix-only commands carry a
-      // prefix-FREE usage string (the renderer adds the env prefix);
-      // slash-only ones keep the literal "/name".
-      ...(d.prefix
-        ? { data: { name: d.name, toJSON: () => ({ name: d.name, options: [] }) } }
-        : {}),
-      name: d.name,
-      category: "utility",
-      usage: d.prefix ? d.name : `/${d.name}`,
-      surface: d.prefix ? "prefix-only" : "slash-only",
-      prefixExecute: d.prefix ? async () => {} : undefined,
-    },
-    names: d.prefix ? [...new Set([d.name, ...d.aliases])] : [d.name],
-  }));
-}
-
-const cands = makeCandidates();
+// Sanity pins: the registry must contain the commands the scenario
+// assertions below reference. If a rename ever breaks a scenario,
+// these fail FIRST with a precise message instead of a cryptic miss.
+await test("registry: expected commands are loaded", () => {
+  const names = cands.map((c) => c.command.name ?? c.command.data?.name);
+  for (const expected of ["help", "afk", "avatar", "announce", "setnick", "serverinfo",
+    "userinfo", "suggest", "bot", "boot", "purge", "changelog", "calculate", "poll",
+    "dice", "joke", "8ball", "rps"]) {
+    assert(names.includes(expected), `command "${expected}" missing from the loaded registry`);
+  }
+});
 
 // --- editDistance basics ---
 await test("editDistance: identical", () => {
@@ -203,7 +195,9 @@ await test("typo: no suggestion for garbage", () => {
 
 await test("typo via alias: 'abot' -> bot (via alias 'about')", () => {
   const s = findClosestMatch(cands, "abot");
-  assert(s && s.data.name === "bot", `expected bot, got ${s?.name ?? s?.data?.name}`);
+  // Real prefix-only commands carry `name`, not a slash builder —
+  // the old fixture's `data.name` accessor only worked on the fake.
+  assert(s && (s.name ?? s.data?.name) === "bot", `expected bot, got ${s?.name ?? s?.data?.name}`);
 });
 
 // --- headline scenarios rendered exactly like the bot will ---
@@ -220,7 +214,9 @@ await test("SCENARIO '>se' full render", () => {
   const out = formatLookupDescription(m);
   console.log("        ── what '>se' shows ──");
   for (const line of out.description.split("\n")) console.log("        " + line);
-  assert(out.total === 3, `expected 3 matches (serverinfo, setnick, userinfo), got ${out.total}`);
+  // 4 real matches: serverinfo + setnick (starts-with), choose +
+  // userinfo (contains). The stale pre-Coolsies fixture only knew 3.
+  assert(out.total === 4, `expected 4 matches (serverinfo, setnick, choose, userinfo), got ${out.total}`);
 });
 
 await test("SCENARIO '>sug' finds suggest via starts-with", () => {
@@ -249,3 +245,14 @@ await test("boundary: MAX_SUGGESTION_DISTANCE export sanity", () => {
 
 console.log(failed === 0 ? `\nAll ${passed} checks passed.` : `\n${failed} FAILED, ${passed} passed.`);
 process.exitCode = failed === 0 ? 0 : 1;
+
+// cleanup: throwaway DB + settled native teardown (same pattern as
+// verify-dispatcher — avoids the better-sqlite3 close/exit race).
+const { closeDb } = await import("./dist/database/client.js");
+closeDb();
+setTimeout(() => {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    if (existsSync(TEST_DB + suffix)) rmSync(TEST_DB + suffix);
+  }
+  process.exit(failed === 0 ? 0 : 1);
+}, 50);

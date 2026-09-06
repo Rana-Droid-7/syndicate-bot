@@ -2,7 +2,7 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
 
-## v1.0.1 — 2026-09-05 (post-1.0 hardening: five adversarial audit cycles)
+## v1.0.1 — 2026-09-05 (post-1.0 hardening: six adversarial audit cycles)
 
 **The release the audits earned.** Five consecutive adversarial cycles against the 1.0.0 codebase (each re-auditing the previous cycle's fixes, empirically confirming every suspicion with repro scripts before touching code) surfaced 3 critical bugs, 10+ high/medium issues, and a long tail of nits — every one fixed and pinned by a regression check that runs in CI from now on.
 
@@ -35,7 +35,7 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 ### New verification infrastructure (wired into `npm run verify` + GitHub + GitLab CI)
 - **`verify-embeds.mjs` (68 checks)** — renders every embed the bot can produce through discord.js' own serializer and validates each against Discord's hard limits (6,000 total / 4,096 description / 1,024 field value / 256 title / 25 fields), with maximal hostile inputs and the help visibility gates.
 - `verify-dispatcher.mjs` now uses a self-cleaning throwaway database (the old `final.db` was recreated and abandoned on every run).
-- **Counts**: 40 unit + 152 integration/attack + 68 embed + 24 lookup + 3 timer checks + dispatcher torture — plus relation scans (alias collisions, usage-vs-alias consistency, example dispatch, suggestion coverage, slash deployment parity, tag-mirroring coverage) run during the audit.
+- **Counts**: 40 unit + 156 integration/attack + 76 embed + 25 lookup + 3 timer checks + dispatcher torture — plus relation scans (alias collisions, usage-vs-alias consistency, example dispatch, suggestion coverage, slash deployment parity, tag-mirroring coverage) run during the audit.
 - Three harness checks that passed vacuously (a reply-or-throw disjunction, a masked-embed poll check, a replica-logic choose test) were rebuilt to assert the exact contracts.
 
 ### Cycle 4 — harness pollution + enforced consistency
@@ -51,6 +51,16 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 
 ### Runtime
 - **Node.js floor raised to 24 (LTS "Krypton")**: engines, both CI images, and `@types/node` moved from 22 to 24. better-sqlite3@13 needs >=22 — 24 is the same requirement on the active LTS line with the longer security runway. No code changes were needed: the codebase is pure ESM on stable APIs (worker threads, node:test, better-sqlite3), and the full verify suite passes unchanged.
+
+### Cycle 6 — harness truth, the never-pinned invariants
+- **The lookup harness had been testing a fantasy.** `verify_lookup.mjs` carried a hand-maintained command fixture that had drifted from reality since v0.5.4: it claimed `roll` had a `dice` alias (dice is its own command), listed `poll` as slash-only (prefix since v0.5.4), and predated every Coolsies command — while all 24 of its checks passed, because they only ever tested the fixture itself. The harness now derives its candidates from the real loaded registry (the same list the live dispatcher matches against), with a registry-sanity pin so renames fail loudly. Two scenario counts corrected to reality (`>se` has 4 matches — `choose` contains it).
+- **The original 30-day timer bug is now pinned end-to-end.** A real 30-day reminder created through the real service must schedule through the CHAINED timer path (the whole reason `safeSetTimeout` exists — previously only tested with tiny injected hops, never through the service with the real 24.86-day hop limit).
+- **Storage failsafe pinned**: `getDb()` after `closeDb()` refuses with the guard error instead of silently re-opening (verified in a subprocess so the harness's own DB stays live).
+- **Help-via-alias pinned**: `>help av` resolves avatar, `whois` → userinfo, `ts` → timestamp, etc. — the help system accepts every dispatchable alias (7 alias paths in the embed harness).
+- **Pagination clamping pinned**: `>joke list 999` clamps to the last page; `0`/`-1`/`abc` throw clean UserInputErrors.
+- Chrono date edges verified: feb 30/29-non-leap/dec 32 all return null (clean errors); leap-year Feb 29 resolves; negative deltas clamp via forwardDate.
+- Copy truthfulness verified: the "Ships with 19 classic responses" claim matches migration 002's actual seed count.
+- Harness hygiene: verify-embeds dead scaffolding removed (`built` var, SKIP stub — replaced by a real timestamp case).
 
 ### Housekeeping
 - README: privileged-intent setup step (first boot failed with `Used disallowed intents` for anyone following it), accurate verify counts, changelog/embed harness in the development section.

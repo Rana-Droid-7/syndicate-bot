@@ -122,9 +122,6 @@ async function renderEmbeds(modulePath, content, opts = {}) {
 console.log("\n=== STATIC BUILDERS (maximal inputs) ===");
 {
   // changelog: the full array (worst case)
-  const changelog = (await import("./dist/commands/utility/changelog.js")).default;
-  const built = changelog;
-  // borrow the internal builder via a rendered reply
   const embeds = await renderEmbeds("./dist/commands/utility/changelog.js", ">changelog");
   for (let i = 0; i < embeds.length; i++) validateEmbed(`changelog (full RELEASES array)`, embeds[i]);
 
@@ -149,6 +146,18 @@ console.log("\n=== STATIC BUILDERS (maximal inputs) ===");
     detailChecked++;
   }
   report(`help detail pages rendered (${detailChecked} commands)`, detailChecked >= 30);
+
+  // Cycle-6: help detail pages must resolve via ALIASES too — the
+  // dispatcher accepts them for execution, so >help must accept them
+  // for documentation (av -> avatar, whois -> userinfo, h -> help...).
+  {
+    const aliasCases = [["av", "avatar"], ["whois", "userinfo"], ["calc", "calculate"], ["h", "help"], ["ts", "timestamp"], ["si", "serverinfo"], ["remind", "remindme"]];
+    for (const [alias, canonical] of aliasCases) {
+      const e = help.buildCommandDetailEmbed(client, alias, { userId: "111111111111111111", isAdminHere: true });
+      const ok = e !== null && e.toJSON().title.includes(canonical);
+      report(`help detail via alias: ${alias} -> ${canonical}`, ok);
+    }
+  }
 
   // Visibility gates: admin pages hidden from plebs, owner pages
   // hidden from non-developers. NULL is the contract.
@@ -195,7 +204,7 @@ console.log("\n=== COMMAND OUTPUTS (hostile maximal inputs) ===");
     ["./dist/commands/utility/roll.js", `>roll 20d9999`, {}, "roll (20 dice)"],
     ["./dist/commands/utility/roll.js", `>roll 20d9999+999`, {}, "roll (20 dice + modifier)"],
     ["./dist/commands/utility/snowflake.js", `>snowflake 1300000000000000000`, {}, "snowflake"],
-    ["./dist/commands/utility/timestamp.ts", ``, {}, "SKIP"],
+    ["./dist/commands/utility/timestamp.js", `>timestamp tomorrow 5pm`, {}, "timestamp (parsed time)"],
     ["./dist/commands/coolsies/choose.js", `>choose ${Array.from({length: 10}, (_, i) => "c".repeat(100)).join(" ")}`, {}, "choose (10 x 100-char options)"],
     ["./dist/commands/coolsies/rate.js", `>rate`, {}, "rate self"],
     ["./dist/commands/coolsies/rps.js", `>rps rock`, {}, "rps instant"],
@@ -205,7 +214,6 @@ console.log("\n=== COMMAND OUTPUTS (hostile maximal inputs) ===");
     ["./dist/commands/utility/calculate.js", `>calc 2+2`, {}, "calc"],
   ];
   for (const [mod, input, opts, label] of cases) {
-    if (label === "SKIP") continue;
     const jsMod = mod.replace(".ts", ".js");
     try {
       const embeds = await renderEmbeds(jsMod, input, opts);

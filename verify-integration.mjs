@@ -715,6 +715,87 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
     }
   }
 
+  // --- Cycle-6: collection list pagination clamps to the last page ---
+  {
+    const J = "./dist/commands/coolsies/joke.js";
+    const { jokeRepository } = await import("./dist/repositories/jokes.js");
+    const { jokeService } = await import("./dist/services/jokes.js");
+    const DEV = "111111111111111111";
+    const seeded = [];
+    for (let i = 0; i < 30; i++) seeded.push(jokeService.add(`page probe joke ${i}`, DEV));
+    const mk = () => { const replies = []; return { author: { id: DEV, tag: "t#1" }, reply: async (p) => { replies.push(p); return {}; }, _replies: replies }; };
+    // Page 999 must clamp to the LAST page, not crash or show empty
+    const totalJokes = jokeService.countAll();
+    const lastPage = Math.max(1, Math.ceil(totalJokes / 10));
+    const far = mk();
+    await (await import(J)).default.prefixExecute(far, ["list", "999"]);
+    const farFooter = far._replies[0]?.embeds[0]?.toJSON()?.footer?.text ?? "";
+    report("joke list: page 999 clamps to the last page",
+      farFooter.includes(`Page ${lastPage}/${lastPage}`), `footer=${farFooter.slice(0, 20)}`);
+    // Invalid pages throw clean taxonomy errors
+    const zero = await runCommand(J, ">joke list 0", { authorId: DEV });
+    report("joke list: page 0 rejected as UserInputError",
+      !zero.ok && zero.error?.name === "UserInputError");
+    // cleanup seeded probe jokes
+    for (const id of seeded) jokeRepository.remove(id);
+  }
+
+  // --- Cycle-6: the ORIGINAL 30-day timer bug, tested through the real
+  // service for the first time. A 30-day reminder's delay exceeds the
+  // 32-bit setTimeout limit (~24.86 days) — safeSetTimeout must chain
+  // through intermediate hops instead of silently firing in 1ms. We
+  // can't wait 30 days; we verify the chain ENGAGES: the scheduling
+  // decision (intercepting the logger's console.log stream) must show
+  // the chained path with the correct hop remainder.
+  {
+    const { reminderService } = await import("./dist/services/reminders.js");
+    const { reminderRepository } = await import("./dist/repositories/reminders.js");
+    const origLog = console.log;
+    const captured = [];
+    console.log = (...a) => captured.push(a.join(" "));
+    try {
+      const due = Date.now() + 30 * 24 * 60 * 60 * 1000 - 60_000; // 30d minus a hair (command cap allows exactly 30d)
+      const id = await reminderService.create({ channels: { fetch: async () => null } }, gid, "555555555555555555", "181818181818181818", "30-day chain probe", due);
+      reminderRepository.markDelivered(id); // stand the timer down; we only verify the scheduling decision
+    } finally {
+      console.log = origLog;
+    }
+    const chainLogged = captured.some((l) => l.includes("exceeds the safe hop limit") && l.includes("chaining"));
+    report("reminders: 30-day reminder schedules through the CHAINED timer path", chainLogged,
+      chainLogged ? "" : "chain decision never logged — would be the original 1ms-fire bug");
+  }
+
+  // --- Cycle-6: storage failsafes (pinned for the first time) ---
+  // getDb() after closeDb() must refuse instead of silently re-opening.
+  {
+    const dbMod = await import("./dist/database/client.js");
+    const { getDb, closeDb } = dbMod;
+    // The harness closes at the end; simulate on the throwaway: close,
+    // attempt access, expect the guard error, then RE-OPEN for the rest
+    // of the harness by resetting the module state via a fresh getDb
+    // after... the guard is one-way (`closed` never resets). So instead
+    // exercise the guard via a SEPARATE process (subprocess) to keep the
+    // harness's own DB alive:
+    const { spawnSync } = await import("node:child_process");
+    const probe = `
+      process.env.DATABASE_FILE = "data/integration-test.db";
+      process.env.DISCORD_TOKEN = "x"; process.env.CLIENT_ID = "1";
+      const { getDb, runMigrations, closeDb } = await import("./dist/database/client.js");
+      runMigrations();
+      closeDb();
+      try {
+        getDb();
+        console.log("REOPENED");
+      } catch (e) {
+        console.log(e.message.includes("after closeDb()") ? "GUARDED" : "WRONG-ERROR:" + e.message.slice(0, 60));
+      }
+      process.exit(0);
+    `;
+    const res = spawnSync(process.execPath, ["--input-type=module", "-e", probe], { cwd: process.cwd(), encoding: "utf8" });
+    const out = (res.stdout.match(/(GUARDED|REOPENED|WRONG-ERROR:.*)/) ?? [])[1];
+    report("getDb: refuses access after closeDb (no silent reopen)", out === "GUARDED", `got: ${out}`);
+  }
+
   // --- Cycle-5: 429 detection uses structured signals, not just text ---
   {
     // Exercise the real deliver() path: an overdue reminder against a

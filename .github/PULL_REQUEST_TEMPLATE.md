@@ -2,7 +2,7 @@
 Thank you for the PR. Before requesting review, confirm:
 -->
 
-- [ ] `npm run verify` is green locally (typecheck + build + 40 unit + 152 integration + 68 embed + 24 lookup + 3 timer + dispatcher)
+- [ ] `npm run verify` is green locally (typecheck + build + 40 unit + 156 integration + 76 embed + 25 lookup + 3 timer + dispatcher)
 - [ ] No new package dependencies without discussion (three cycles were spent removing dead ones)
 - [ ] Public command? Prefix-only, no slash builder. Privileged command? Slash-only with in-code permission checks.
 - [ ] Errors throw taxonomy classes to the dispatcher — nothing catches its own input errors and replies internally
