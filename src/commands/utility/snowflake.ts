@@ -1,5 +1,6 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
 import { discordTimestamp } from "../../lib/format.js";
@@ -53,7 +54,7 @@ const command: Command = {
   prefixNames: ["snowflake", "decode"],
   async prefixExecute(message: Message, args: string[]) {
     const id = args[0]?.trim();
-    log.info("PREFIX", `>snowflake invoked by ${message.author.tag} (${message.author.id}): ${id}`);
+    log.info("PREFIX", `${config.prefix}snowflake invoked by ${message.author.tag} (${message.author.id}): ${id}`);
     // Taxonomy errors (not internal replies): the dispatcher renders
     // them identically everywhere AND refunds the cooldown so an
     // immediate retry isn't cooldown-locked.

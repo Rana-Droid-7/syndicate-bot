@@ -58,7 +58,7 @@ const command: Command = {
     }
 
     const input = timeArgs.join(" ");
-    log.info("PREFIX", `>timestamp invoked by ${message.author.tag} (${message.author.id}): ${JSON.stringify(input)} style=${style}`);
+    log.info("PREFIX", `${config.prefix}timestamp invoked by ${message.author.tag} (${message.author.id}): ${JSON.stringify(input)} style=${style}`);
     const embed = buildResult(input, style);
 
     if (!embed) {

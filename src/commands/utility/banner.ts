@@ -1,5 +1,6 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
 import { mentionToId, isSnowflake } from "../../lib/validation.js";
@@ -55,7 +56,7 @@ const command: Command = {
     const rawArg = args[0];
 
     if (!mentioned && !rawArg) {
-      log.info("PREFIX", `>banner invoked by ${message.author.tag} (${message.author.id}) with no args — showing self.`);
+      log.info("PREFIX", `${config.prefix}banner invoked by ${message.author.tag} (${message.author.id}) with no args — showing self.`);
       await replyWithBanner(message.author.id, message.client, (p) => message.reply(p));
       return;
     }
@@ -65,7 +66,7 @@ const command: Command = {
       throw new UserInputError(`\`${rawArg}\` doesn't look like a valid user mention or ID.`, "banner [@user]");
     }
 
-    log.info("PREFIX", `>banner invoked by ${message.author.tag} (${message.author.id}) for target ${targetId}`);
+    log.info("PREFIX", `${config.prefix}banner invoked by ${message.author.tag} (${message.author.id}) for target ${targetId}`);
     await replyWithBanner(targetId, message.client, (p) => message.reply(p));
   },
 };

@@ -1,5 +1,6 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
 import { log } from "../../core/logger.js";
@@ -55,7 +56,7 @@ const command: Command = {
   prefixNames: ["roll"],
   async prefixExecute(message: Message, args: string[]) {
     const notation = args[0] ?? "1d6";
-    log.info("PREFIX", `>roll invoked by ${message.author.tag} (${message.author.id}): ${notation}`);
+    log.info("PREFIX", `${config.prefix}roll invoked by ${message.author.tag} (${message.author.id}): ${notation}`);
     const result = rollDice(notation);
     if (!result) {
       // Taxonomy error (not an internal reply): the dispatcher renders

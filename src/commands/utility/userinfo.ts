@@ -4,6 +4,7 @@ import { type Message,
   type UserFlags,
 } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
 import { mentionToId, isSnowflake } from "../../lib/validation.js";
@@ -156,7 +157,7 @@ const command: Command = {
     }
 
     const targetId = message.mentions.users.first()?.id ?? (args[0] ? mentionToId(args[0]) : message.author.id);
-    log.info("PREFIX", `>userinfo invoked by ${message.author.tag} (${message.author.id}) for target ${targetId}`);
+    log.info("PREFIX", `${config.prefix}userinfo invoked by ${message.author.tag} (${message.author.id}) for target ${targetId}`);
     const member = await message.guild.members.fetch(targetId).catch(() => null);
 
     // Not-found is an ANSWER (the input was fine), so it stays a

@@ -53,7 +53,7 @@ const command: Command = {
   prefixNames: ["bot", "botinfo", "about"],
   async prefixExecute(message: Message) {
     const client = message.client as SyndicateClient;
-    log.info("PREFIX", `>bot invoked by ${message.author.tag} (${message.author.id})`);
+    log.info("PREFIX", `${config.prefix}bot invoked by ${message.author.tag} (${message.author.id})`);
     await message.reply(buildBotInfoPayload(client));
   },
 };

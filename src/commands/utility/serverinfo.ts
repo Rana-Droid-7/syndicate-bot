@@ -1,5 +1,6 @@
 import { type Message, type Guild } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
@@ -87,7 +88,7 @@ const command: Command = {
 
   prefixNames: ["serverinfo", "guildinfo", "si"],
   async prefixExecute(message: Message) {
-    log.info("PREFIX", `>serverinfo invoked by ${message.author.tag} (${message.author.id})`);
+    log.info("PREFIX", `${config.prefix}serverinfo invoked by ${message.author.tag} (${message.author.id})`);
     if (!message.guild) return;
     await message.reply({ embeds: [await buildServerInfoEmbed(message.guild)] });
   },

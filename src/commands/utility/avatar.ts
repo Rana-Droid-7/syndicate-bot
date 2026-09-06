@@ -6,6 +6,7 @@ import {
   type User,
 } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
 import { mentionToId, isSnowflake } from "../../lib/validation.js";
@@ -52,7 +53,7 @@ const command: Command = {
     const rawArg = args[0];
 
     if (!mentioned && !rawArg) {
-      log.info("PREFIX", `>avatar invoked by ${message.author.tag} (${message.author.id}) with no args — showing self.`);
+      log.info("PREFIX", `${config.prefix}avatar invoked by ${message.author.tag} (${message.author.id}) with no args — showing self.`);
       const row = await buildAvatarButtonRow(message.author);
       await message.reply({ embeds: [buildAvatarEmbed(message.author)], components: [row] });
       return;
@@ -60,12 +61,12 @@ const command: Command = {
 
     const targetId = mentioned?.id ?? mentionToId(rawArg!);
     if (!isSnowflake(targetId)) {
-      log.debug("PREFIX", `>avatar given invalid target: ${JSON.stringify(rawArg)}`);
+      log.debug("PREFIX", `${config.prefix}avatar given invalid target: ${JSON.stringify(rawArg)}`);
       throw new UserInputError(`\`${rawArg}\` doesn't look like a valid user mention or ID.`, "avatar [@user]");
     }
 
     const user = await message.client.users.fetch(targetId).catch(() => null);
-    log.info("PREFIX", `>avatar invoked by ${message.author.tag} (${message.author.id}) for target ${targetId} -> ${user ? "found" : "not found"}`);
+    log.info("PREFIX", `${config.prefix}avatar invoked by ${message.author.tag} (${message.author.id}) for target ${targetId} -> ${user ? "found" : "not found"}`);
 
     if (!user) {
       await message.reply("Couldn't find that user.");

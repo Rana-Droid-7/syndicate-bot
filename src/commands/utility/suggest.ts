@@ -60,7 +60,7 @@ const command: Command = {
       message.guild.name,
       safe,
     );
-    log.info("SUGGEST", `>suggest by ${message.author.tag} (${message.author.id}) in guild ${message.guild.id}: entry #${id}.`);
+    log.info("SUGGEST", `${config.prefix}suggest by ${message.author.tag} (${message.author.id}) in guild ${message.guild.id}: entry #${id}.`);
 
     await message.reply({
       embeds: [

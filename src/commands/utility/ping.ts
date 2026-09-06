@@ -1,5 +1,6 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { log } from "../../core/logger.js";
 
@@ -23,7 +24,7 @@ const command: Command = {
 
   prefixNames: ["ping", "latency"],
   async prefixExecute(message: Message) {
-    log.info("PREFIX", `>ping invoked by ${message.author.tag} (${message.author.id})`);
+    log.info("PREFIX", `${config.prefix}ping invoked by ${message.author.tag} (${message.author.id})`);
     const sent = await message.reply("🏓 Pinging...");
     const latency = sent.createdTimestamp - message.createdTimestamp;
     await sent.edit({

@@ -40,7 +40,7 @@ const command: Command = {
 
   prefixNames: ["invite"],
   async prefixExecute(message: Message) {
-    log.info("PREFIX", `>invite invoked by ${message.author.tag} (${message.author.id})`);
+    log.info("PREFIX", `${config.prefix}invite invoked by ${message.author.tag} (${message.author.id})`);
     await message.reply(buildInvitePayload());
   },
 };

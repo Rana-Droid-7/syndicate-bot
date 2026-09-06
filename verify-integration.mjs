@@ -28,6 +28,7 @@ for (const suffix of ["", "-wal", "-shm"]) {
   if (existsSync(TEST_DB + suffix)) rmSync(TEST_DB + suffix);
 }
 process.env.DATABASE_FILE = "data/integration-test.db";
+process.env.SUGGESTIONS_FILE = "data/harness-suggestions-export.txt";
 process.env.DISCORD_TOKEN = "test-token";
 process.env.CLIENT_ID = "123456789012345678";
 process.env.OWNER_ID = "111111111111111111"; // the "developer"
@@ -695,6 +696,62 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
   const { getDb } = await import("./dist/database/client.js");
   const gid = "999999999999999999";
 
+  // --- Cycle-4: harness runs must NEVER touch the production
+  // suggestions export. Before the SUGGESTIONS_FILE override, every
+  // verify run appended its test payloads to data/suggestions.txt
+  // (637 polluted lines accumulated). The export path is redirected;
+  // this check pins that the redirect works.
+  {
+    const { readFileSync, existsSync: exists } = await import("node:fs");
+    const exportBefore = exists("data/harness-suggestions-export.txt") ? readFileSync("data/harness-suggestions-export.txt", "utf8") : "";
+    const harnessLines = exportBefore ? exportBefore.split("\n").filter((l) => l.trim()).length : 0;
+    report("suggest export: harness writes go to the throwaway (not data/suggestions.txt)",
+      harnessLines > 0, `throwaway lines=${harnessLines}`);
+    // The real export must NOT contain harness markers after a full run.
+    if (exists("data/suggestions.txt")) {
+      const real = readFileSync("data/suggestions.txt", "utf8");
+      const polluted = real.includes("user_2222") || real.includes("Test Guild (999999999999999999)") || real.includes("rm -rf");
+      report("suggest export: production file free of harness pollution", !polluted);
+    }
+  }
+
+  // --- Cycle-4: repo-wide consistency pins (run in CI from now on) ---
+  {
+    const { readFileSync: read } = await import("node:fs");
+
+    // 1) Version: package.json == config.ts == README heading == bug
+    //    template placeholder.
+    const pkg = JSON.parse(read("package.json", "utf8"));
+    const cfg = read("src/core/config.ts", "utf8");
+    const readme = read("README.md", "utf8");
+    const bugTpl = read(".github/ISSUE_TEMPLATE/bug_report.md", "utf8");
+    const v = pkg.version;
+    report("consistency: package.json version matches config.ts",
+      cfg.includes(`version: "${v}"`),
+      `pkg=${v} config has: ${(cfg.match(/version: "([^"]+)"/) ?? [])[1]}`);
+    report("consistency: README heading carries the current version",
+      readme.includes(`# Syndicate Bot — v${v}`));
+    report("consistency: bug-report template placeholder is current",
+      bugTpl.includes(`"${v}"`));
+
+    // 2) .env.example documents every env key config.ts reads.
+    const cfgKeys = [...cfg.matchAll(/process\.env\.([A-Z_]+)/g)].map((m) => m[1]);
+    const uniqueKeys = [...new Set(cfgKeys)];
+    const envExample = read(".env.example", "utf8");
+    const missing = uniqueKeys.filter((k) => !new RegExp(`^${k}=`, "m").test(envExample));
+    report("consistency: .env.example documents every env key",
+      missing.length === 0, `missing: ${missing.join(", ") || "(none)"}`);
+
+    // 3) CI (both platforms) runs every harness package.json verify runs.
+    const verifyScript = pkg.scripts.verify;
+    const harnesses = [...verifyScript.matchAll(/node (verify-[a-z-]+\.mjs)/g)].map((m) => m[1]);
+    const gh = read(".github/workflows/ci.yml", "utf8");
+    const gl = read(".gitlab-ci.yml", "utf8");
+    const missingCI = harnesses.filter((h) => !gh.includes(h) || !gl.includes(h));
+    report("consistency: GitHub + GitLab CI run every verify harness",
+      missingCI.length === 0, `missing: ${missingCI.join(", ") || "(none)"}`);
+  }
+
   // --- C1: /warn list overflow must keep the NEWEST warnings ---
   const { warningService } = await import("./dist/services/warnings.js");
   const warnUid = "121212121212121212";
@@ -882,3 +939,4 @@ closeDb();
 for (const suffix of ["", "-wal", "-shm"]) {
   if (existsSync(TEST_DB + suffix)) rmSync(TEST_DB + suffix);
 }
+if (existsSync("data/harness-suggestions-export.txt")) rmSync("data/harness-suggestions-export.txt");

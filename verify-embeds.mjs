@@ -27,6 +27,7 @@ for (const suffix of ["", "-wal", "-shm"]) {
   if (existsSync(TEST_DB + suffix)) rmSync(TEST_DB + suffix);
 }
 process.env.DATABASE_FILE = "data/embeds-test.db";
+process.env.SUGGESTIONS_FILE = "data/harness-suggestions-export.txt";
 process.env.DISCORD_TOKEN = "x";
 process.env.CLIENT_ID = "123456789012345678";
 process.env.OWNER_ID = "111111111111111111";
@@ -251,5 +252,6 @@ setTimeout(() => {
   for (const suffix of ["", "-wal", "-shm"]) {
     if (existsSync(TEST_DB + suffix)) rmSync(TEST_DB + suffix);
   }
+  if (existsSync("data/harness-suggestions-export.txt")) rmSync("data/harness-suggestions-export.txt");
   process.exit(failed === 0 ? 0 : 1);
 }, 50);

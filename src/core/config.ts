@@ -81,8 +81,11 @@ export const config = {
 
   // Where the plain-text suggestions export/backup lives (the SQL
   // database is the authoritative store; this stays as a human-
-  // readable mirror for easy skimming).
-  suggestionsFile: path.join(projectRoot, "data", "suggestions.txt"),
+  // readable mirror for easy skimming). Override with
+  // SUGGESTIONS_FILE to relocate it (tests point it at a throwaway).
+  suggestionsFile: process.env.SUGGESTIONS_FILE
+    ? path.resolve(projectRoot, process.env.SUGGESTIONS_FILE)
+    : path.join(projectRoot, "data", "suggestions.txt"),
 
   // SQLite database file (relative to project root). WAL journal
   // files (.wal/.shm) appear next to it at runtime.

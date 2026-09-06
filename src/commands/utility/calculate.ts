@@ -41,7 +41,7 @@ const command: Command = {
       return;
     }
     const expression = args.join(" ").slice(0, 200);
-    log.info("PREFIX", `>calc invoked by ${message.author.tag} (${message.author.id}): ${JSON.stringify(expression)}`);
+    log.info("PREFIX", `${config.prefix}calc invoked by ${message.author.tag} (${message.author.id}): ${JSON.stringify(expression)}`);
     await message.reply({ embeds: [await buildEmbed(expression)] });
   },
 };
