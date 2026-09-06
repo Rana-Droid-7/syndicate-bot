@@ -102,6 +102,7 @@ export function buildHelpHomeEmbed(client: SyndicateClient, viewer?: HelpViewer)
     .setDescription(
       `A modern Discord utility & moderation bot.\n\n` +
         `**Get started:** public commands live on the \`${config.prefix}\` prefix — try \`${config.prefix}help <command>\` for exact usage. ` +
+        `Rushing a command shows a live countdown until it's ready. ` +
         `Moderation and admin tools are native \`/\` slash commands.`,
     );
 
@@ -237,7 +238,7 @@ export function buildCommandDetailEmbed(
   }
 
   if (cmd.cooldownSeconds && cmd.cooldownSeconds > 0) {
-    embed.addFields({ name: "Cooldown", value: `${cmd.cooldownSeconds}s per user`, inline: true });
+    embed.addFields({ name: "Cooldown", value: `${cmd.cooldownSeconds}s per user — with a live countdown if you retry early`, inline: true });
   }
 
   embed.setFooter({ text: `${config.botName} • v${config.version} • <> required, [] optional` });

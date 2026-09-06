@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { config } from "../core/config.js";
 import { log } from "../core/logger.js";
 import type { Database as SqliteDatabase } from "better-sqlite3";
+import { clearStatementCache } from "../repositories/shared.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // dist/database/client.js -> project root is ../../; src/database/client.ts -> ../../
@@ -53,6 +54,9 @@ export function getDb(): SqliteDatabase {
 /** Closes the connection cleanly — only the shutdown path calls this. */
 export function closeDb(): void {
   if (db) {
+    // Cached prepared statements reference THIS connection — drop the
+    // cache before the handle goes so a reopened DB starts fresh.
+    clearStatementCache();
     db.close();
     db = null;
     closed = true;

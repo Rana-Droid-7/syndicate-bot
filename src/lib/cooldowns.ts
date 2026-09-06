@@ -60,6 +60,19 @@ export class Cooldowns {
     }
   }
 
+  /**
+   * LIVE remaining time (ms) on a cooldown hit, or 0 if none. Powers
+   * the dynamic countdown rendering — the remaining time shown to the
+   * user must be queried at RENDER time, not baked at THROW time
+   * (the old static "try again in 4s" text went stale the moment it
+   * was sent).
+   */
+  getRemaining(guildId: string | null, userId: string, commandName: string): number {
+    const existing = this.hits.get(this.key(guildId, userId, commandName));
+    if (existing === undefined) return 0;
+    return Math.max(0, existing - Date.now());
+  }
+
   get size(): number {
     return this.hits.size;
   }

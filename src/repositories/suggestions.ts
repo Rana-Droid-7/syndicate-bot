@@ -1,4 +1,4 @@
-import { getDb } from "../database/client.js";
+import { stmt } from "./shared.js";
 import { ensureGuild, ensureUser } from "./shared.js";
 
 export interface SuggestionRow {
@@ -19,8 +19,8 @@ export const suggestionRepository = {
     ensureGuild(guildId);
     ensureUser(authorId);
     return Number(
-      getDb()
-        .prepare(`INSERT INTO suggestions (guild_id, author_id, content) VALUES (?, ?, ?)`)
+      stmt(
+          `INSERT INTO suggestions (guild_id, author_id, content) VALUES (?, ?, ?)`)
         .run(guildId, authorId, content).lastInsertRowid,
     );
   },
@@ -28,12 +28,12 @@ export const suggestionRepository = {
   /** Read path for a single guild's list (integration-harness verified). */
   forGuild(guildId: string, status?: string): SuggestionRow[] {
     if (status) {
-      return getDb()
-        .prepare(`SELECT * FROM suggestions WHERE guild_id = ? AND status = ? ORDER BY id DESC`)
+      return stmt(
+          `SELECT * FROM suggestions WHERE guild_id = ? AND status = ? ORDER BY id DESC`)
         .all(guildId, status) as SuggestionRow[];
     }
-    return getDb()
-      .prepare(`SELECT * FROM suggestions WHERE guild_id = ? ORDER BY id DESC`)
+    return stmt(
+        `SELECT * FROM suggestions WHERE guild_id = ? ORDER BY id DESC`)
       .all(guildId) as SuggestionRow[];
   },
 };

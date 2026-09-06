@@ -133,7 +133,8 @@ src/
   lib/          embeds, validation, cooldowns, errors, permissions, confirm,
                 safeMath, safeTimeout, safeError, suggest, help, format, invite,
                 devlog, collection (shared joke/8ball management), shutdown,
-                restartHook (in-process /boot Reboot)
+                restartHook (in-process /boot Reboot), cooldownCountdown (live
+                cooldown timers), singleInstanceLock (double-boot guard)
   services/     afk, reminders, warnings, suggestions, jokes, eightball (business logic)
   repositories/ afk, reminders, warnings, suggestions, jokes, eightball, guilds,
                 shared (SQL only)
@@ -160,7 +161,7 @@ else touches SQL.
 ## Development
 
 - `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine, regression pins)
-- `npm run verify` — everything: strict typecheck, build, **40** unit tests, and **six** verification harnesses (**160** integration/attack + **76** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
+- `npm run verify` — everything: strict typecheck, build, **40** unit tests, and **six** verification harnesses (**164** integration/attack + **76** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
 - [CHANGELOG.md](CHANGELOG.md) — every release's full history; `changelog` in-chat shows the recent highlights
 - `verify_timer.mjs` — chained-timer regression (the >24.8-day setTimeout bug)
 - `verify_lookup.mjs` — prefix lookup/suggestion scenarios
@@ -170,6 +171,7 @@ else touches SQL.
 - `verify-docs.mjs` — every claim the docs make about the codebase (versions, counts, file trees, table lists) derived from live state — docs can't silently lie in CI
 - Load-time errors are intentional: a duplicate command name or missing metadata refuses to boot the bot instead of silently dropping it.
 - Error taxonomy: every failure is one typed class, rendered by one shared dispatcher path — input mistakes never consume the cooldown (`cooldowns.refund()`).
+- Cooldown hits render as a LIVE countdown — a Discord dynamic timestamp plus a once-per-second progress-bar edit loop until the window clears (both dispatch lanes).
 
 ## Project files
 

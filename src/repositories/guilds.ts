@@ -1,4 +1,4 @@
-import { getDb } from "../database/client.js";
+import { stmt } from "./shared.js";
 
 /** Guild rows exist so child tables can FK-reference them with
  *  ON DELETE CASCADE — deleting a guild cascades away all of its
@@ -6,6 +6,6 @@ import { getDb } from "../database/client.js";
 export const guildRepository = {
   /** Removes the guild row; FK cascades clean all child data. Returns rows changed. */
   remove(guildId: string): number {
-    return getDb().prepare(`DELETE FROM guilds WHERE guild_id = ?`).run(guildId).changes;
+    return stmt(`DELETE FROM guilds WHERE guild_id = ?`).run(guildId).changes;
   },
 };

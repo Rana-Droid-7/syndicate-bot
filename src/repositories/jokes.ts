@@ -1,3 +1,4 @@
+import { stmt } from "./shared.js";
 import { getDb } from "../database/client.js";
 import { ensureUser } from "./shared.js";
 
@@ -20,7 +21,10 @@ export const jokeRepository = {
   add(content: string, createdBy: string): number {
     ensureUser(createdBy);
     return Number(
-      getDb().prepare(`INSERT INTO jokes (content, created_by) VALUES (?, ?)`).run(content, createdBy).lastInsertRowid,
+      stmt(`INSERT INTO jokes (content, created_by) VALUES (?, ?)`).run(
+        content,
+        createdBy,
+      ).lastInsertRowid,
     );
   },
 
@@ -29,10 +33,16 @@ export const jokeRepository = {
     const database = getDb();
     const run = database.transaction(() => {
       const row = database
-        .prepare(`SELECT * FROM jokes WHERE enabled = 1 ORDER BY RANDOM() LIMIT 1`)
+        .prepare(
+          `SELECT * FROM jokes WHERE enabled = 1 ORDER BY RANDOM() LIMIT 1`,
+        )
         .get() as JokeRow | undefined;
       if (row) {
-        database.prepare(`UPDATE jokes SET usage_count = usage_count + 1 WHERE id = ?`).run(row.id);
+        database
+          .prepare(
+            `UPDATE jokes SET usage_count = usage_count + 1 WHERE id = ?`,
+          )
+          .run(row.id);
       }
       return row ?? null;
     });
@@ -40,11 +50,15 @@ export const jokeRepository = {
   },
 
   countEnabled(): number {
-    return (getDb().prepare(`SELECT COUNT(*) AS n FROM jokes WHERE enabled = 1`).get() as { n: number }).n;
+    return (
+      stmt(`SELECT COUNT(*) AS n FROM jokes WHERE enabled = 1`).get() as {
+        n: number;
+      }
+    ).n;
   },
 
   countAll(): number {
-    return (getDb().prepare(`SELECT COUNT(*) AS n FROM jokes`).get() as { n: number }).n;
+    return (stmt(`SELECT COUNT(*) AS n FROM jokes`).get() as { n: number }).n;
   },
 
   list(limit = 25, offset = 0): JokeRow[] {
@@ -54,17 +68,22 @@ export const jokeRepository = {
   },
 
   get(id: number): JokeRow | null {
-    return (getDb().prepare(`SELECT * FROM jokes WHERE id = ?`).get(id) as JokeRow | undefined) ?? null;
+    return (
+      (stmt(`SELECT * FROM jokes WHERE id = ?`).get(id) as
+        JokeRow | undefined) ?? null
+    );
   },
 
   remove(id: number): boolean {
-    return getDb().prepare(`DELETE FROM jokes WHERE id = ?`).run(id).changes > 0;
+    return stmt(`DELETE FROM jokes WHERE id = ?`).run(id).changes > 0;
   },
 
   edit(id: number, content: string): boolean {
     return (
       getDb()
-        .prepare(`UPDATE jokes SET content = ?, updated_at = datetime('now') WHERE id = ?`)
+        .prepare(
+          `UPDATE jokes SET content = ?, updated_at = datetime('now') WHERE id = ?`,
+        )
         .run(content, id).changes > 0
     );
   },
@@ -72,7 +91,9 @@ export const jokeRepository = {
   setEnabled(id: number, enabled: boolean): boolean {
     return (
       getDb()
-        .prepare(`UPDATE jokes SET enabled = ?, updated_at = datetime('now') WHERE id = ?`)
+        .prepare(
+          `UPDATE jokes SET enabled = ?, updated_at = datetime('now') WHERE id = ?`,
+        )
         .run(enabled ? 1 : 0, id).changes > 0
     );
   },

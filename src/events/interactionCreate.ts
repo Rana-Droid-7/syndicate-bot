@@ -7,6 +7,8 @@ import { sendDevLog } from "../lib/devlog.js";
 import { cooldowns } from "../lib/cooldowns.js";
 import { mapErrorToReply } from "../lib/errors.js";
 import { ContextError, UserInputError, PermissionError } from "../lib/errors.js";
+import { CooldownError } from "../lib/errors.js";
+import { cooldownCountdownEmbed } from "../lib/cooldownCountdown.js";
 import { errorDetail } from "../lib/safeError.js";
 import { log } from "../core/logger.js";
 
@@ -61,6 +63,18 @@ const event: BotEvent<"interactionCreate"> = {
       // refund the cooldown — retrying immediately must not lock.
       if (error instanceof UserInputError || error instanceof ContextError || error instanceof PermissionError) {
         cooldowns.refund(commandInteraction.guildId, commandInteraction.user.id, commandInteraction.commandName);
+      }
+      // Cooldown hits render as a LIVE countdown (same as the prefix
+      // lane): remaining time updates every second until the window
+      // clears. Ephemeral, so only the rate-limited user sees it.
+      if (error instanceof CooldownError) {
+        const label = `/${commandInteraction.commandName}`;
+        const totalMs = (command.cooldownSeconds ?? 0) * 1000;
+        const remainingMs = cooldowns.getRemaining(commandInteraction.guildId, commandInteraction.user.id, commandInteraction.commandName);
+        await commandInteraction
+          .reply({ embeds: [cooldownCountdownEmbed(label, remainingMs, totalMs)], flags: MessageFlags.Ephemeral })
+          .catch((err) => log.error("CMD", "Failed to send slash cooldown countdown", err));
+        return;
       }
       await handleSlashError(commandInteraction, error, commandInteraction.commandName);
     }

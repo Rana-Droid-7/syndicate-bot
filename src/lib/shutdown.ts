@@ -2,6 +2,7 @@ import type { Client } from "discord.js";
 import { flushLogSink } from "../core/logSink.js";
 import { closeDb } from "../database/client.js";
 import { reminderService } from "../services/reminders.js";
+import { releaseSingleInstanceLock } from "./singleInstanceLock.js";
 import { log } from "../core/logger.js";
 
 /**
@@ -25,5 +26,6 @@ export async function gracefulExit(
   await flushLogSink().catch(() => null);
   await client.destroy().catch(() => null);
   closeDb();
+  releaseSingleInstanceLock();
   process.exit(opts.reboot ? 1 : 0);
 }

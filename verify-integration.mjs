@@ -740,6 +740,52 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
     for (const id of seeded) jokeRepository.remove(id);
   }
 
+  // --- Cycle-8: single-instance lock (subprocess probes) ---
+  {
+    const { spawnSync } = await import("node:child_process");
+    const lock = await import("node:fs").then((m) => m.readFileSync("data/bot.lock", "utf8").trim()).catch(() => null);
+
+    // 1) A live holder (our own harness process writes a lock pointing at a REAL
+    //    alive PID — the harness itself) must make acquire refuse.
+    const probeLive = `
+      import { writeFileSync } from "node:fs";
+      writeFileSync("data/bot.lock", String(process.pid));
+      const { acquireSingleInstanceLock } = await import("./dist/lib/singleInstanceLock.js");
+      const ok = acquireSingleInstanceLock();
+      console.log(ok ? "ACQUIRED-BAD" : "REFUSED");
+      process.exit(0);
+    `;
+    const res1 = spawnSync(process.execPath, ["--input-type=module", "-e", probeLive], { cwd: process.cwd(), encoding: "utf8" });
+    report("lock: a live holder makes the second boot refuse",
+      (res1.stdout ?? "").includes("REFUSED"), res1.stdout.trim());
+
+    // 2) A stale lock (dead PID) is reclaimed silently.
+    const probeStale = `
+      import { writeFileSync, rmSync, existsSync } from "node:fs";
+      writeFileSync("data/bot.lock", "999999999"); // no such PID
+      const { acquireSingleInstanceLock, releaseSingleInstanceLock } = await import("./dist/lib/singleInstanceLock.js");
+      const ok = acquireSingleInstanceLock();
+      releaseSingleInstanceLock();
+      const released = !existsSync("data/bot.lock");
+      console.log(ok && released ? "RECLAIMED-RELEASED" : "BAD:" + ok + ":" + released);
+      process.exit(0);
+    `;
+    const res2 = spawnSync(process.execPath, ["--input-type=module", "-e", probeStale], { cwd: process.cwd(), encoding: "utf8" });
+    report("lock: stale lock reclaimed, then released cleanly",
+      (res2.stdout ?? "").includes("RECLAIMED-RELEASED"), res2.stdout.trim());
+  }
+
+  // --- Cycle-8: dynamic cooldown countdown renders live time ---
+  {
+    const { cooldownCountdownEmbed } = await import("./dist/lib/cooldownCountdown.js");
+    const json = cooldownCountdownEmbed(">joke", 4200, 5000).toJSON();
+    const desc = json.description ?? "";
+    report("countdown: embed shows live seconds + <t:R> dynamic timestamp + progress bar",
+      desc.includes("4.2s") && desc.includes("<t:") && desc.includes("▰"), desc.slice(0, 70));
+    const ready = cooldownCountdownEmbed(">joke", 0, 5000).toJSON().description ?? "";
+    report("countdown: expired window flips to the ready message", ready.includes("ready to use again"));
+  }
+
   // --- Soft restart machinery (the /boot Reboot fix): the hook
   // contract, the pre-registration guard, and the reminder subsystem's
   // reset-for-restart path ---

@@ -17,7 +17,8 @@ import { cooldowns } from "../lib/cooldowns.js";
 import {
   mapErrorToReply,
 } from "../lib/errors.js";
-import { UserInputError, ContextError, PermissionError } from "../lib/errors.js";
+import { UserInputError, ContextError, PermissionError, CooldownError } from "../lib/errors.js";
+import { cooldownCountdownEmbed, startCooldownCountdown } from "../lib/cooldownCountdown.js";
 import { errorDetail } from "../lib/safeError.js";
 import { afkService } from "../services/afk.js";
 import { log } from "../core/logger.js";
@@ -176,6 +177,27 @@ const event: BotEvent<"messageCreate"> = {
         // the user retries immediately and it must not cooldown-lock.
         if (error instanceof UserInputError || error instanceof ContextError || error instanceof PermissionError) {
           cooldowns.refund(guildId, message.author.id, command.name ?? command.data?.name ?? "?");
+        }
+        // Cooldown hits render as a LIVE countdown — the remaining
+        // time updates every second until the window clears, instead
+        // of a static "try again in 4s" that's stale the moment it
+        // lands.
+        if (error instanceof CooldownError) {
+          const label = `${config.prefix}${commandName}`;
+          const totalMs = (command.cooldownSeconds ?? 0) * 1000;
+          const remainingMs = cooldowns.getRemaining(guildId, message.author.id, command.name ?? command.data?.name ?? "?");
+          await message
+            .reply({ embeds: [cooldownCountdownEmbed(label, remainingMs, totalMs)] })
+            .then((sent) => {
+              startCooldownCountdown(
+                { edit: (payload) => sent.edit(payload as { embeds: never[] }) },
+                label,
+                remainingMs,
+                totalMs,
+              );
+            })
+            .catch((err) => log.error("PREFIX", "Failed to send cooldown countdown", err));
+          return;
         }
         await handleCommandError(message, error, `${config.prefix}${commandName}`);
       }

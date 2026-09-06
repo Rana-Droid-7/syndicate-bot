@@ -11,6 +11,7 @@ import { closeDb, getDb, runMigrations } from "./database/client.js";
 import { reminderService, resetForRestart } from "./services/reminders.js";
 import { warmAfkIndex } from "./services/afk.js";
 import { registerRestartHook } from "./lib/restartHook.js";
+import { acquireSingleInstanceLock, releaseSingleInstanceLock } from "./lib/singleInstanceLock.js";
 
 // Safety net: a single failed interaction/API call anywhere in the
 // bot should never be able to take the whole process down. Every
@@ -47,6 +48,7 @@ process.on("uncaughtException", (error) => {
   // Discord disconnects, and the DB closes LAST so in-flight
   // deliveries can't race the close.
   const cleanup = (async () => {
+    releaseSingleInstanceLock();
     await sendDevLog(
       client,
       baseEmbed()
@@ -121,6 +123,14 @@ async function bootClient(): Promise<SyndicateClient> {
 }
 
 async function main() {
+  // ---- single-instance lock: BEFORE anything else ----
+  // A second live instance would double-send every announcement and
+  // mirror line (the double-instance incident). Refuse to boot if a
+  // live holder exists; silently reclaim stale locks from dead PIDs.
+  if (!acquireSingleInstanceLock()) {
+    process.exit(1);
+  }
+
   log.info("BOOT", `Starting ${config.botName} v${config.version}...`);
   log.info("BOOT", `Prefix: "${config.prefix}" | Dev guild: ${config.devGuildId ?? "(none — using global commands)"}`);
   log.info("BOOT", `Developer IDs configured: ${config.developerIds.length}`);
@@ -212,6 +222,7 @@ async function main() {
     // Close the database AFTER Discord is down: pending reminder
     // deliveries triggered by timers won't race the close.
     closeDb();
+    releaseSingleInstanceLock();
     process.exit(0);
   };
 

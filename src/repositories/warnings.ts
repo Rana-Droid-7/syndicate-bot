@@ -1,3 +1,4 @@
+import { stmt } from "./shared.js";
 import { getDb } from "../database/client.js";
 import { ensureGuild, ensureUser } from "./shared.js";
 
@@ -22,7 +23,7 @@ export const warningRepository = {
     ensureUser(userId);
     ensureUser(moderatorId);
 
-    const insert = getDb().prepare(
+    const insert = stmt(
       `INSERT INTO warnings (guild_id, user_id, moderator_id, reason, created_unix_ms) VALUES (?, ?, ?, ?, ?)`,
     );
     // Delete the oldest beyond the cap. Ordering must be fully
@@ -30,7 +31,7 @@ export const warningRepository = {
     // the millisecond, so id (autoincrement, monotonic) is the
     // tie-breaker — without it, SQLite's ambiguous ordering can keep
     // "r28" as newest while deleting r29.
-    const prune = getDb().prepare(
+    const prune = stmt(
       `DELETE FROM warnings WHERE id IN (
          SELECT id FROM warnings
          WHERE guild_id = ? AND user_id = ? AND active = 1
@@ -52,20 +53,19 @@ export const warningRepository = {
 
   countActive(guildId: string, userId: string): number {
     return (
-      getDb()
-        .prepare(`SELECT COUNT(*) AS n FROM warnings WHERE guild_id = ? AND user_id = ? AND active = 1`)
+      stmt(
+          `SELECT COUNT(*) AS n FROM warnings WHERE guild_id = ? AND user_id = ? AND active = 1`)
         .get(guildId, userId) as { n: number }
     ).n;
   },
 
   /** Total active warnings across all guilds (status reporting). */
   totalActive(): number {
-    return (getDb().prepare(`SELECT COUNT(*) AS n FROM warnings WHERE active = 1`).get() as { n: number }).n;
+    return (stmt(`SELECT COUNT(*) AS n FROM warnings WHERE active = 1`).get() as { n: number }).n;
   },
 
   activeFor(guildId: string, userId: string): WarningRow[] {
-    return getDb()
-      .prepare(
+    return stmt(
         `SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? AND active = 1
          ORDER BY created_unix_ms DESC, id DESC`,
       )
@@ -73,8 +73,8 @@ export const warningRepository = {
   },
 
   clearActive(guildId: string, userId: string): number {
-    return getDb()
-      .prepare(`UPDATE warnings SET active = 0 WHERE guild_id = ? AND user_id = ? AND active = 1`)
+    return stmt(
+        `UPDATE warnings SET active = 0 WHERE guild_id = ? AND user_id = ? AND active = 1`)
       .run(guildId, userId).changes;
   },
 };

@@ -382,6 +382,55 @@ test("sanitizeEchoOrReject: rejects invisible-only input, keeps real text", () =
 });
 
 
+// ---------- cycle-8: dynamic cooldown countdown ----------
+test("countdown: progress bar fills as time elapses", async () => {
+  // progressBar is internal; verify via the description builder through the
+  // exported embed: at 50% elapsed the bar has exactly half filled.
+  const { cooldownCountdownEmbed } = await import("../lib/cooldownCountdown.js");
+  const total = 10_000, remaining = 5_000;
+  const json = cooldownCountdownEmbed(">joke", remaining, total).toJSON();
+  const desc = json.description ?? "";
+  assert.ok(desc.includes("5.0s"), `live seconds shown, got: ${desc.slice(0, 80)}`);
+  assert.ok(desc.includes("▰".repeat(4)), "half-elapsed bar is half filled");
+  assert.ok(desc.includes("<t:"), "dynamic Discord timestamp present (client-side ticking)");
+  const filled = (desc.match(/▰/g) ?? []).length;
+  const empty = (desc.match(/▱/g) ?? []).length;
+  assert.equal(filled + empty, 8, "bar has 8 segments");
+});
+
+test("countdown: zero remaining flips to the ready message", async () => {
+  const { cooldownCountdownEmbed } = await import("../lib/cooldownCountdown.js");
+  const desc = cooldownCountdownEmbed(">joke", 0, 10_000).toJSON().description ?? "";
+  assert.ok(desc.includes("ready to use again"), `got: ${desc.slice(0, 60)}`);
+});
+
+test("cooldowns.getRemaining: live query matches the throw-time value", () => {
+  const cd = new Cooldowns();
+  cd.check("g", "u", "cmd", 60);
+  const r1 = cd.getRemaining("g", "u", "cmd");
+  assert.ok(r1 > 59_000 && r1 <= 60_000, `remaining close to 60s, got ${r1}`);
+  // after refund: zero
+  cd.refund("g", "u", "cmd");
+  assert.equal(cd.getRemaining("g", "u", "cmd"), 0);
+  // unknown key: zero, never throws
+  assert.equal(cd.getRemaining("g", "other", "nope"), 0);
+});
+
+// ---------- cycle-8: prepared-statement cache ----------
+test("stmt cache: same SQL string returns the SAME statement object", async () => {
+  const { stmt, clearStatementCache } = await import("../repositories/shared.js");
+  const a = stmt("SELECT 1 AS one");
+  const b = stmt("SELECT 1 AS one");
+  assert.equal(a, b, "identical SQL must hit the cache");
+  const c = stmt("SELECT 2 AS two");
+  assert.notEqual(a, c, "different SQL compiles separately");
+  // executing a cached statement works and returns rows
+  assert.deepEqual(stmt("SELECT 1 AS one").get(), { one: 1 });
+  clearStatementCache();
+  const d = stmt("SELECT 1 AS one");
+  assert.notEqual(a, d, "cache cleared compiles fresh");
+});
+
 // ---------- regression: reminder in-flight dedup guard semantics ----------
 // The M1 bug: deliver() read status='pending', awaited the network,
 // and only then marked delivered — the 60s sweep could re-select the
