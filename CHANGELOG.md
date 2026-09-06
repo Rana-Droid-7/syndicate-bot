@@ -35,7 +35,7 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 ### New verification infrastructure (wired into `npm run verify` + GitHub + GitLab CI)
 - **`verify-embeds.mjs` (68 checks)** — renders every embed the bot can produce through discord.js' own serializer and validates each against Discord's hard limits (6,000 total / 4,096 description / 1,024 field value / 256 title / 25 fields), with maximal hostile inputs and the help visibility gates.
 - `verify-dispatcher.mjs` now uses a self-cleaning throwaway database (the old `final.db` was recreated and abandoned on every run).
-- **Counts**: 40 unit + 157 integration/attack + 76 embed + 25 lookup + 27 doc + 3 timer checks + dispatcher torture — plus relation scans (alias collisions, usage-vs-alias consistency, example dispatch, suggestion coverage, slash deployment parity, tag-mirroring coverage) run during the audit.
+- **Counts**: 40 unit + 160 integration/attack + 76 embed + 25 lookup + 27 doc + 3 timer checks + dispatcher torture — plus relation scans (alias collisions, usage-vs-alias consistency, example dispatch, suggestion coverage, slash deployment parity, tag-mirroring coverage) run during the audit.
 - Three harness checks that passed vacuously (a reply-or-throw disjunction, a masked-embed poll check, a replica-logic choose test) were rebuilt to assert the exact contracts.
 
 ### Cycle 4 — harness pollution + enforced consistency
@@ -69,6 +69,12 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 - **Docs truthified**: README's architecture tree had silently drifted for several releases (missing `collection`/`shutdown` in lib, `eightball` absent from services/repositories AND the persistence table, no mention of `logSink`, `types/`, or `deploy-commands.ts`) — all fixed and now enforced. `guilds`/`users` documented as the structural FK parents they are.
 - **Long-run stability sweep** (the bot runs unattended): every collector carries a `time:` bound, every sweep interval is unref'd, cooldown/AFK-notice maps have periodic sweeps, the AFK index drops with guildDelete, and the logSink backoff can't retry-loop — no unbounded growth surface remains.
 - Runtime floor is Node 24 LTS (Krypton) everywhere (engines, @types/node 24, both CI images, comments).
+
+### Cycle 7.5 — /boot Reboot actually reboots
+- **Reboot was half-broken by design**: it exited with code 1 expecting a process manager (PM2/systemd/Docker) to restart the process — under `npm run dev` or bare `node`, the button correctly shut the bot down and nothing brought it back. **Reboot is now an in-process soft restart**: tear down the Discord connection, create a fresh client, re-run the full boot sequence (command load, login, mirror arming, reminder restore, AFK warm), and come back online within seconds — with or without a process manager. The exit-code-1 contract survives only as the fallback if the in-process restart itself fails. Shutdown semantics unchanged.
+- Supporting changes: `bootClient()` extracted in index.ts (the boot sequence is now reusable); the reminder sweep interval is idempotent per process (a soft restart hands it the new client instead of stacking a second interval — the same duplication family as the double-instance incident); new `restartHook` module gives `/boot` access to index.ts's restart machinery without an import cycle; un-armed-hook triggers throw loudly instead of silently no-oping. Panel copy and `>help boot` details now describe the real behavior.
+- Pinned in CI (3 checks): un-armed hook throws, hook arms after registration, and the destroy → re-login → back-online ordering. End-to-end traced with a live probe before pinning.
+- Also this session: **duplicate announcements fixed** — two dev instances had been running concurrently (operator launch mistake), doubling every lifecycle embed and mirror line; killed to a single instance, and the sweep-idempotency fix above removes the in-code path that could reintroduce duplication after a restart.
 
 ### Housekeeping
 - README: privileged-intent setup step (first boot failed with `Used disallowed intents` for anyone following it), accurate verify counts, changelog/embed harness in the development section.

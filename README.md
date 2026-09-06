@@ -132,7 +132,8 @@ src/
   handlers/     command + event loaders (load-time validation)
   lib/          embeds, validation, cooldowns, errors, permissions, confirm,
                 safeMath, safeTimeout, safeError, suggest, help, format, invite,
-                devlog, collection (shared joke/8ball management), shutdown
+                devlog, collection (shared joke/8ball management), shutdown,
+                restartHook (in-process /boot Reboot)
   services/     afk, reminders, warnings, suggestions, jokes, eightball (business logic)
   repositories/ afk, reminders, warnings, suggestions, jokes, eightball, guilds,
                 shared (SQL only)
@@ -159,7 +160,7 @@ else touches SQL.
 ## Development
 
 - `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine, regression pins)
-- `npm run verify` — everything: strict typecheck, build, **40** unit tests, and **six** verification harnesses (**157** integration/attack + **76** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
+- `npm run verify` — everything: strict typecheck, build, **40** unit tests, and **six** verification harnesses (**160** integration/attack + **76** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
 - [CHANGELOG.md](CHANGELOG.md) — every release's full history; `changelog` in-chat shows the recent highlights
 - `verify_timer.mjs` — chained-timer regression (the >24.8-day setTimeout bug)
 - `verify_lookup.mjs` — prefix lookup/suggestion scenarios

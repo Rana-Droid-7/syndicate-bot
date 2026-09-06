@@ -13,6 +13,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed, successEmbed, warnEmbed } from "../../lib/embeds.js";
 import { isDeveloper } from "../../lib/permissions.js";
 import { announceOffline } from "../../lib/devlog.js";
+import { triggerSoftRestart } from "../../lib/restartHook.js";
 import { gracefulExit } from "../../lib/shutdown.js";
 import { log } from "../../core/logger.js";
 
@@ -41,9 +42,11 @@ const command: Command = {
   details:
     "Process control for the bot's developers only, gated by trusted user IDs in " +
     "code — never roles, because a role from some other server must never control " +
-    "the whole bot. Running it DMs you a private button panel: **Reboot** exits " +
-    "for the process manager to bring it back, **Shutdown** stays down until " +
-    "started manually. Both announce to the dev-log channel before disconnecting.",
+    "the whole bot. Running it DMs you a private button panel: **Reboot** recycles " +
+    "the connection in-process and comes back within seconds — it works under " +
+    "`npm run dev`, bare `node`, and process managers alike. **Shutdown** stays " +
+    "down until started manually. Both announce to the dev-log channel before " +
+    "disconnecting.",
   data: new SlashCommandBuilder()
     .setName("boot")
     .setDescription("Control the bot process — sends you a private button panel in your DMs. (Developer only)")
@@ -72,7 +75,7 @@ const command: Command = {
         .setTitle("🛠️ Syndicate Bot — Process Control")
         .setDescription(
           `What would you like to do? This panel is private to **${interaction.user.tag}** and expires in 60 seconds.\n\n` +
-            `🔄 **Reboot** — clean disconnect, then exit code 1 (a process manager brings me back up)\n` +
+            `🔄 **Reboot** — in-process restart: I recycle my connection and come back within seconds (no process manager needed)\n` +
             `🛑 **Shutdown** — clean disconnect and stay down until started manually\n` +
             `❌ **Cancel** — do nothing`,
         );
@@ -164,7 +167,7 @@ const command: Command = {
               .setTitle(`🔄 ${action} Confirmed`)
               .setDescription(
                 action === "Reboot"
-                  ? "Rebooting now. If a process manager (PM2, systemd, Docker) is watching, I'll be back in moments — and I'll announce it when I'm online."
+                  ? "Rebooting now — recycling my connection in-process. I'll be back online in seconds and announce it."
                   : "Shutting down now. I'll stay offline until started manually.",
               ),
           ],
@@ -172,18 +175,27 @@ const command: Command = {
         })
         .catch((err) => log.error("OWNER", `Failed to update boot panel on ${action}`, err));
 
+      if (action === "Reboot") {
+        // In-process soft restart: works under `npm run dev` and bare
+        // `node` alike — no process manager required. The 30-minute
+        // exit-code-1 contract remains ONLY as the fallback if the
+        // in-process restart fails (see softRestart in index.ts).
+        triggerSoftRestart("/boot DM panel", interaction.user.tag);
+        return;
+      }
+
       // Announce to the dev-log channel BEFORE disconnecting, so the
       // "going offline" message actually makes it out the door.
       await announceOffline(
         interaction.client,
-        action === "Reboot" ? "Reboot requested via /boot panel" : "Shutdown requested via /boot panel",
+        "Shutdown requested via /boot panel",
         `${interaction.user.tag} (\`${interaction.user.id}\`)`,
       );
 
       // The shared graceful-exit path (identical cleanup ordering as
       // the signal handlers in index.ts).
       await gracefulExit(interaction.client, {
-        reboot: action === "Reboot",
+        reboot: false,
         reason: "/boot DM panel",
         requestedBy: interaction.user.tag,
       });

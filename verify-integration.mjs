@@ -740,6 +740,42 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
     for (const id of seeded) jokeRepository.remove(id);
   }
 
+  // --- Soft restart machinery (the /boot Reboot fix): the hook
+  // contract, the pre-registration guard, and the reminder subsystem's
+  // reset-for-restart path ---
+  {
+    const { registerRestartHook, triggerSoftRestart, isRestartHookArmed } = await import("./dist/lib/restartHook.js");
+    const { reminderService, resetForRestart } = await import("./dist/services/reminders.js");
+
+    // 1) un-armed hook must throw a clear error, never silently no-op
+    let threw = false;
+    try { triggerSoftRestart("probe", "probe"); } catch { threw = true; }
+    report("restart hook: un-armed trigger throws (never a silent no-op)", threw);
+
+    // 2) full flow: register -> trigger -> observe order
+    const events = [];
+    const fakeClient = {
+      user: { tag: "B#1", id: "1", setPresence: () => null },
+      guilds: { cache: new Map() },
+      destroy: async () => events.push("destroyed"),
+      login: async () => events.push("logged-in"),
+      channels: { fetch: async () => null },
+      createMessageComponentCollector: () => ({ on: () => {}, stop: () => {} }),
+    };
+    registerRestartHook((reason, by) => {
+      events.push(`hook:${reason}:${by}`);
+      reminderService.beginShutdown();
+      resetForRestart();
+      void (async () => { await fakeClient.destroy(); await fakeClient.login(); events.push("back-online"); })();
+    });
+    report("restart hook: armed after registration", isRestartHookArmed());
+    triggerSoftRestart("/boot DM panel", "dev#1");
+    await new Promise((r) => setTimeout(r, 150));
+    report("restart hook: destroy -> re-login -> back-online ordering",
+      events.length === 4 && events[0].startsWith("hook:") && events[1] === "destroyed" && events[2] === "logged-in" && events[3] === "back-online",
+      events.join(" -> "));
+  }
+
   // --- Cycle-6: the ORIGINAL 30-day timer bug, tested through the real
   // service for the first time. A 30-day reminder's delay exceeds the
   // 32-bit setTimeout limit (~24.86 days) — safeSetTimeout must chain

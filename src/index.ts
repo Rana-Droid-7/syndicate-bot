@@ -8,8 +8,9 @@ import { baseEmbed } from "./lib/embeds.js";
 import { errorDetail } from "./lib/safeError.js";
 import { flushLogSink, initLogSink } from "./core/logSink.js";
 import { closeDb, getDb, runMigrations } from "./database/client.js";
-import { reminderService } from "./services/reminders.js";
+import { reminderService, resetForRestart } from "./services/reminders.js";
 import { warmAfkIndex } from "./services/afk.js";
+import { registerRestartHook } from "./lib/restartHook.js";
 
 // Safety net: a single failed interaction/API call anywhere in the
 // bot should never be able to take the whole process down. Every
@@ -77,6 +78,48 @@ declare global {
   var __syndicateClient: SyndicateClient | undefined;
 }
 
+/**
+ * Boots ONE client instance end-to-end: create, load commands/events,
+ * login, arm the mirror, restore reminders. Everything except the
+ * once-per-process work (DB open/migrate, signal handlers, sweep
+ * interval) so a soft restart can call it again with a fresh client.
+ */
+async function bootClient(): Promise<SyndicateClient> {
+  const client = new SyndicateClient();
+  globalThis.__syndicateClient = client;
+  log.debug("BOOT", "Client instance created.");
+
+  log.info("BOOT", "Loading commands...");
+  await loadCommands(client);
+
+  log.info("BOOT", "Loading events...");
+  await loadEvents(client);
+
+  log.info("BOOT", "Logging in to Discord...");
+  await client.login(config.token);
+  log.info("BOOT", "Login call completed — waiting for 'ready' event.");
+
+  // Wire the verbose mirror feed to the private logs channel. From
+  // this point on, every mirrored log line (command dispatches,
+  // permission decisions, AFK changes, ...) flows there in batches.
+  if (config.botLogChannelId) {
+    initLogSink(client, config.botLogChannelId);
+    log.info("BOOT", "Private bot-logs mirror armed.");
+  }
+
+  // Restore persisted reminders + hand the sweep the fresh client
+  // (the interval itself is created once per process).
+  const restored = reminderService.restore(client);
+  reminderService.startSweep(client);
+  if (restored > 0) log.info("BOOT", `Reminder subsystem online (${restored} pending).`);
+
+  // Warm the in-memory AFK index from the database so the per-message
+  // hot path never needs a SELECT before the first set/clear.
+  warmAfkIndex();
+
+  return client;
+}
+
 async function main() {
   log.info("BOOT", `Starting ${config.botName} v${config.version}...`);
   log.info("BOOT", `Prefix: "${config.prefix}" | Dev guild: ${config.devGuildId ?? "(none — using global commands)"}`);
@@ -94,9 +137,52 @@ async function main() {
   }
   log.info("BOOT", `Database integrity: ${String(integrity)}.`);
 
-  const client = new SyndicateClient();
-  globalThis.__syndicateClient = client;
-  log.debug("BOOT", "Client instance created.");
+  const client = await bootClient();
+
+  // ---- soft-restart machinery (used by /boot's Reboot) ----
+  // A soft restart tears down the Discord connection, creates a
+  // FRESH client, and re-runs the boot sequence IN THE SAME PROCESS —
+  // so it works under `npm run dev` and bare `node` alike. Under a
+  // process manager nothing changes: the process still never exits
+  // on Reboot, so there's no restart-loop interaction to worry about.
+  let restarting = false;
+  const softRestart = async (reason: string, requestedBy: string): Promise<void> => {
+    if (restarting) return; // a second click racing the restart
+    restarting = true;
+    log.info("SHUTDOWN", `Soft restart (${reason}) by ${requestedBy} — recycling client in-process...`);
+
+    // Stand down timers, drain the mirror queue while connected.
+    reminderService.beginShutdown();
+    await flushLogSink().catch(() => null);
+
+    try {
+      await client.destroy();
+      log.info("SHUTDOWN", "Old client destroyed cleanly.");
+    } catch (error) {
+      log.error("SHUTDOWN", "Error destroying old client (continuing restart)", error);
+    }
+
+    // DB stays open — same process, same connection. Just re-arm the
+    // subsystems that stood down.
+    resetForRestart();
+    try {
+      await bootClient();
+      log.info("BOOT", "Soft restart complete — bot is back online.");
+    } catch (error) {
+      log.error("BOOT", "Soft restart FAILED to bring the bot back up", error);
+      // Couldn't come back: fall back to the classic contract — exit
+      // non-zero so a process manager (PM2/systemd/Docker/tsx watch
+      // with a wrapper) has the chance to revive the process.
+      process.exit(1);
+    }
+    restarting = false;
+  };
+
+  // Exported for /boot via a module-level hook (commands can't reach
+  // index.ts's closure directly).
+  registerRestartHook((reason, requestedBy) => {
+    void softRestart(reason, requestedBy);
+  });
 
   // ---- signal handling: registered BEFORE the slow boot steps ----
   // Command loading, Discord login, and reminder restore can each
@@ -141,33 +227,6 @@ async function main() {
       process.exit(1);
     });
   });
-
-  log.info("BOOT", "Loading commands...");
-  await loadCommands(client);
-
-  log.info("BOOT", "Loading events...");
-  await loadEvents(client);
-
-  log.info("BOOT", "Logging in to Discord...");
-  await client.login(config.token);
-  log.info("BOOT", "Login call completed — waiting for 'ready' event.");
-
-  // Wire the verbose mirror feed to the private logs channel. From
-  // this point on, every mirrored log line (command dispatches,
-  // permission decisions, AFK changes, ...) flows there in batches.
-  if (config.botLogChannelId) {
-    initLogSink(client, config.botLogChannelId);
-    log.info("BOOT", "Private bot-logs mirror armed.");
-  }
-
-  // Restore persisted reminders + start the overdue sweep safety net.
-  const restored = reminderService.restore(client);
-  reminderService.startSweep(client);
-  if (restored > 0) log.info("BOOT", `Reminder subsystem online (${restored} pending).`);
-
-  // Warm the in-memory AFK index from the database so the per-message
-  // hot path never needs a SELECT before the first set/clear.
-  warmAfkIndex();
 }
 
 main().catch((error) => {

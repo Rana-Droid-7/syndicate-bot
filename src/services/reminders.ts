@@ -11,6 +11,14 @@ export const MAX_PENDING_PER_USER = 25;
 
 // Set on shutdown: in-flight timers must not touch the closed DB.
 let shuttingDown = false;
+// Sweep plumbing (single interval per process — see startSweep).
+let sweepInterval: ReturnType<typeof setInterval> | null = null;
+let sweepClient: Client = null as unknown as Client;
+
+/** Clears the shutdown flag for a soft restart (new client, same process). */
+export function resetForRestart(): void {
+  shuttingDown = false;
+}
 
 /**
  * Reminder service. DB rows are the source of truth: a timer firing
@@ -85,20 +93,29 @@ export const reminderService = {
     return pending.length;
   },
 
-  /** Periodic safety net — delivers anything the timers somehow missed. */
+  /**
+   * Periodic safety net — delivers anything the timers somehow missed.
+   * Idempotent per process: a soft restart (see index.ts) calls this
+   * again with the fresh client; a second interval would double-log
+   * every sweep and re-race deliveries, so the interval is created
+   * exactly once and only the client reference moves to the new one.
+   */
   startSweep(client: Client): void {
-    setInterval(() => {
+    sweepClient = client;
+    if (sweepInterval !== null) return;
+    sweepInterval = setInterval(() => {
       if (shuttingDown) return;
       try {
         for (const row of reminderRepository.due(Date.now())) {
           log.warn("TIMER", `Sweep found overdue reminder #${row.id} — delivering.`);
-          void deliver(client, row.id);
+          void deliver(sweepClient, row.id);
         }
       } catch (error) {
         // DB closed between the shutdown flag and here — stand down.
         log.debug("TIMER", "Sweep skipped (storage unavailable).");
       }
-    }, SWEEP_INTERVAL_MS).unref();
+    }, SWEEP_INTERVAL_MS);
+    sweepInterval.unref();
   },
 };
 
