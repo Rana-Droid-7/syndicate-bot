@@ -851,6 +851,48 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
     for (const row of reminderRepository.pending()) reminderRepository.markDelivered(row.id);
   }
 
+  // --- Routing contract: lifecycle embeds and the raw mirror NEVER mix.
+  // dev-log  <- 🟢/🔴 lifecycle embeds + error embeds ONLY
+  // bot-logs <- raw mirrored operational lines ONLY
+  // (Subprocess: config freezes at import, so run the matrix isolated.)
+  {
+    const { spawnSync } = await import("node:child_process");
+    const probe = `
+      process.env.DATABASE_FILE = "data/integration-test.db";
+      process.env.DISCORD_TOKEN = "x"; process.env.CLIENT_ID = "1";
+      process.env.DEV_LOG_CHANNEL_ID = "DEVLOG_CH";
+      process.env.BOT_LOG_CHANNEL_ID = "BOTLOG_CH";
+      const devLogSends = [], botLogSends = [];
+      const client = {
+        channels: { fetch: async (id) => ({
+          isTextBased: () => true,
+          send: async (p) => { if (id === "DEVLOG_CH") devLogSends.push(p); else if (id === "BOTLOG_CH") botLogSends.push(p); },
+        }) },
+        guilds: { cache: new Map([["g", { memberCount: 2 }]]) },
+      };
+      const { runMigrations, closeDb } = await import("./dist/database/client.js");
+      runMigrations();
+      const { announceOnline, announceOffline, sendDevLog } = await import("./dist/lib/devlog.js");
+      const { initLogSink, flushLogSink } = await import("./dist/core/logSink.js");
+      const { log } = await import("./dist/core/logger.js");
+      initLogSink(client, "BOTLOG_CH");
+      await announceOnline(client);
+      await announceOffline(client, "probe", "tester");
+      log.info("PREFIX", "raw line");
+      await flushLogSink();
+      await sendDevLog(client, { });
+      closeDb();
+      const okLifecycleInDevlog = devLogSends.length === 3; // online + offline + error embed
+      const okNoLifecycleInBotlogs = botLogSends.length === 1; // the raw line only
+      console.log(okLifecycleInDevlog && okNoLifecycleInBotlogs ? "ROUTING_OK" : "ROUTING_BROKEN dev=" + devLogSends.length + " bot=" + botLogSends.length);
+      process.exit(0);
+    `;
+    const res = spawnSync(process.execPath, ["--input-type=module", "-e", probe], { cwd: process.cwd(), encoding: "utf8" });
+    const ok = (res.stdout ?? "").includes("ROUTING_OK");
+    report("routing: lifecycle -> dev-log ONLY; raw mirror -> bot-logs ONLY (no mixing)",
+      ok, (res.stdout ?? "") + (res.stderr ?? "").slice(0, 120));
+  }
+
   // --- Cycle-4: repo-wide consistency pins (run in CI from now on) ---
   {
     const { readFileSync: read } = await import("node:fs");

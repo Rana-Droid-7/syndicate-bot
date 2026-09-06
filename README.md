@@ -36,8 +36,8 @@ anything else refuses to start with a clear reason.
    - `DEV_GUILD_ID` — (recommended) test server ID for instant slash registration
    - `OWNER_ID` — your Discord user ID; counted as a developer automatically
    - `DEVELOPER_IDS` — comma-separated user IDs trusted with `/boot`, joke management, etc.
-   - `DEV_LOG_CHANNEL_ID` — (optional) lifecycle announcements + error embeds
-   - `BOT_LOG_CHANNEL_ID` — (optional) **private** verbose operational feed
+   - `DEV_LOG_CHANNEL_ID` — (optional) 🟢/🔴 lifecycle announcements + error embeds **only**
+   - `BOT_LOG_CHANNEL_ID` — (optional) **private** raw operational feed **only** (never receives lifecycle embeds)
    - `PREFIX` — prefix for public commands (default `>`)
    - `DATABASE_FILE` — SQLite path (default `data/syndicate.db`)
 

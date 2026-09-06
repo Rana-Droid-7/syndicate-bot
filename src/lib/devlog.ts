@@ -5,10 +5,7 @@ import { baseEmbed } from "./embeds.js";
 
 /**
  * Posts an embed to a channel by ID, with the same never-throw
- * guarantees as sendDevLog. Used by the lifecycle announcements,
- * which live in the private bot-logs channel (the operational feed)
- * rather than the dev-log channel (reserved for errors and
- * attention-worthy events).
+ * guarantees as sendDevLog.
  */
 async function sendChannelEmbed(client: Client, channelId: string, embed: EmbedBuilder, label: string): Promise<boolean> {
   try {
@@ -45,28 +42,30 @@ export async function sendDevLog(client: Client, embed: EmbedBuilder): Promise<v
 }
 
 /**
- * Lifecycle announcements (online/offline). These belong in the
- * private bot-logs channel — the operational feed — so anyone
- * watching that channel sees the bot's lifecycle alongside the
- * verbose mirror. Falls back to the dev-log channel if the
- * bot-logs channel isn't configured, so an announcement is never
- * silently lost; if neither is configured, no-op.
+ * Lifecycle announcements (online/offline) go STRICTLY to the dev-log
+ * channel — never to bot-logs. The two channels have a strict contract:
+ *
+ *   DEV_LOG_CHANNEL_ID  → lifecycle announcements (online/offline) +
+ *                         attention-worthy error embeds. Nothing else.
+ *   BOT_LOG_CHANNEL_ID  → the raw operational mirror (command
+ *                         dispatches, permission decisions, timers,
+ *                         AFK changes — batched text lines). Nothing
+ *                         else.
+ *
+ * Mixing them would put embed announcements inside the raw code-block
+ * feed (unreadable) and lifecycle noise inside the error channel.
+ * If dev-log isn't configured, the announcement is dropped with a
+ * console log — it must NOT fall back into bot-logs, ever.
  *
  * Posted on every startup/shutdown path (boot ready, SIGINT/
  * SIGTERM, crash, and /boot panel actions).
  */
 async function sendLifecycleAnnouncement(client: Client, embed: EmbedBuilder): Promise<void> {
-  if (config.botLogChannelId) {
-    const sent = await sendChannelEmbed(client, config.botLogChannelId, embed, "lifecycle (bot-logs)");
-    if (sent) return;
-    // Bot-logs channel unreachable — fall through to dev-log so the
-    // announcement still lands somewhere a human will see it.
-  }
   if (config.devLogChannelId) {
-    await sendChannelEmbed(client, config.devLogChannelId, embed, "lifecycle (fallback to dev-log)");
+    await sendChannelEmbed(client, config.devLogChannelId, embed, "lifecycle (dev-log)");
     return;
   }
-  log.debug("DEVLOG", "No log channel configured — lifecycle announcement skipped.");
+  log.info("DEVLOG", "DEV_LOG_CHANNEL_ID not configured — lifecycle announcement skipped (never sent to bot-logs).");
 }
 
 export async function announceOnline(client: Client): Promise<void> {
