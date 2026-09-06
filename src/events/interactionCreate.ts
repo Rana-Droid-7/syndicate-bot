@@ -69,10 +69,9 @@ const event: BotEvent<"interactionCreate"> = {
       // clears. Ephemeral, so only the rate-limited user sees it.
       if (error instanceof CooldownError) {
         const label = `/${commandInteraction.commandName}`;
-        const totalMs = (command.cooldownSeconds ?? 0) * 1000;
         const remainingMs = cooldowns.getRemaining(commandInteraction.guildId, commandInteraction.user.id, commandInteraction.commandName);
         await commandInteraction
-          .reply({ embeds: [cooldownCountdownEmbed(label, remainingMs, totalMs)], flags: MessageFlags.Ephemeral })
+          .reply({ embeds: [cooldownCountdownEmbed(label, remainingMs)], flags: MessageFlags.Ephemeral })
           .catch((err) => log.error("CMD", "Failed to send slash cooldown countdown", err));
         return;
       }

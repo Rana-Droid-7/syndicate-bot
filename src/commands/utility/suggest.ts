@@ -69,6 +69,9 @@ const command: Command = {
           .setDescription(`Thanks, ${message.author}! Your suggestion has been logged for review:\n\n> ${safe}`)
           .setFooter({ text: `Entry #${id} — saved with a timestamp for the server owner to review.` }),
       ],
+      // The echo quotes user-written text — a typed <@id> inside it
+      // must never ping anyone. Only the invoker (reply ping) is allowed.
+      allowedMentions: { users: [message.author.id] },
     });
   },
 };

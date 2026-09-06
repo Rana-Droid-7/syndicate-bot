@@ -775,15 +775,35 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
       (res2.stdout ?? "").includes("RECLAIMED-RELEASED"), res2.stdout.trim());
   }
 
-  // --- Cycle-8: dynamic cooldown countdown renders live time ---
+  // --- Cycle-9: allowedMentions gates (official Discord feature) ---
   {
-    const { cooldownCountdownEmbed } = await import("./dist/lib/cooldownCountdown.js");
-    const json = cooldownCountdownEmbed(">joke", 4200, 5000).toJSON();
+    // >suggest echoes user text — the reply payload must carry the gate
+    const S = "./dist/commands/utility/suggest.js";
+    const cmd = (await import(S)).default;
+    const captured = [];
+    const msg = makeMessage('>suggest "ping <@123456789012345678> now"');
+    msg.author = { id: "222222222222222222", tag: "t#1", bot: false, username: "u", toString: () => "<@222222222222222222>", fetch: async () => null, displayAvatarURL: () => "https://x/a.png", bannerURL: () => null };
+    msg.reply = async (p) => { captured.push(p); return { id: "x", edit: async () => {}, createMessageComponentCollector: () => ({ on: () => {}, stop: () => {} }) }; };
+    await cmd.prefixExecute(msg, ["ping <@123456789012345678> now"]);
+    const gate = captured[0]?.allowedMentions;
+    report("suggest: reply carries allowedMentions gate (invoker only)",
+      gate && JSON.stringify(gate.users) === JSON.stringify(["222222222222222222"]),
+      JSON.stringify(gate ?? null));
+  }
+
+  // --- Cycle-9: simplified live cooldown countdown ---
+  {
+    const { cooldownCountdownEmbed, startCooldownCountdown } = await import("./dist/lib/cooldownCountdown.js");
+    const json = cooldownCountdownEmbed(">joke", 4_200).toJSON();
     const desc = json.description ?? "";
-    report("countdown: embed shows live seconds + <t:R> dynamic timestamp + progress bar",
-      desc.includes("4.2s") && desc.includes("<t:") && desc.includes("▰"), desc.slice(0, 70));
-    const ready = cooldownCountdownEmbed(">joke", 0, 5000).toJSON().description ?? "";
-    report("countdown: expired window flips to the ready message", ready.includes("ready to use again"));
+    report("countdown: 'too fast' + official <t:R> timestamp, no bar",
+      desc.includes("too fast") && /<t:\d+:R>/.test(desc) && !desc.includes("▰"), desc.slice(0, 70));
+    const edits = [];
+    await new Promise((r) => setTimeout(r, 150));
+    startCooldownCountdown({ edit: async (p) => { edits.push(p); } }, ">joke", 40);
+    await new Promise((r) => setTimeout(r, 160));
+    report("countdown: exactly one ready-flip edit after the window",
+      edits.length === 1 && JSON.stringify(edits[0]).includes("again now"), `edits=${edits.length}`);
   }
 
   // --- Soft restart machinery (the /boot Reboot fix): the hook

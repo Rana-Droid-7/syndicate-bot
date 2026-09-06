@@ -382,26 +382,28 @@ test("sanitizeEchoOrReject: rejects invisible-only input, keeps real text", () =
 });
 
 
-// ---------- cycle-8: dynamic cooldown countdown ----------
-test("countdown: progress bar fills as time elapses", async () => {
-  // progressBar is internal; verify via the description builder through the
-  // exported embed: at 50% elapsed the bar has exactly half filled.
+// ---------- cycle-9: live cooldown countdown (simplified spec) ----------
+test("countdown: error message carries the official dynamic timestamp", async () => {
   const { cooldownCountdownEmbed } = await import("../lib/cooldownCountdown.js");
-  const total = 10_000, remaining = 5_000;
-  const json = cooldownCountdownEmbed(">joke", remaining, total).toJSON();
+  const json = cooldownCountdownEmbed(">joke", 4_500).toJSON();
   const desc = json.description ?? "";
-  assert.ok(desc.includes("5.0s"), `live seconds shown, got: ${desc.slice(0, 80)}`);
-  assert.ok(desc.includes("▰".repeat(4)), "half-elapsed bar is half filled");
-  assert.ok(desc.includes("<t:"), "dynamic Discord timestamp present (client-side ticking)");
-  const filled = (desc.match(/▰/g) ?? []).length;
-  const empty = (desc.match(/▱/g) ?? []).length;
-  assert.equal(filled + empty, 8, "bar has 8 segments");
+  // Exact contract: "You are using **>joke** too fast, try again in <t:expiry:R>."
+  assert.ok(desc.includes("too fast"), desc.slice(0, 60));
+  assert.ok(desc.includes(">joke"), "command label present");
+  assert.ok(/<t:\d+:R>/.test(desc), "official <t:R> dynamic timestamp present");
+  assert.ok(!desc.includes("▰"), "no progress bar — deliberately minimal");
 });
 
-test("countdown: zero remaining flips to the ready message", async () => {
-  const { cooldownCountdownEmbed } = await import("../lib/cooldownCountdown.js");
-  const desc = cooldownCountdownEmbed(">joke", 0, 10_000).toJSON().description ?? "";
-  assert.ok(desc.includes("ready to use again"), `got: ${desc.slice(0, 60)}`);
+test("countdown: ready flip fires once after the window", async () => {
+  const { startCooldownCountdown } = await import("../lib/cooldownCountdown.js");
+  const edits: { embeds: unknown[] }[] = [];
+  const target = { edit: async (p: { embeds: unknown[] }) => { edits.push(p); } };
+  startCooldownCountdown(target, ">joke", 30); // 30ms window
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(edits.length, 1, `exactly ONE edit (the ready flip), got ${edits.length}`);
+  const flipped = edits[0]?.embeds?.[0];
+  assert.ok(flipped, "flip carries an embed");
+  assert.ok(JSON.stringify(edits[0]).includes("again now"), "flip says 'again now'");
 });
 
 test("cooldowns.getRemaining: live query matches the throw-time value", () => {

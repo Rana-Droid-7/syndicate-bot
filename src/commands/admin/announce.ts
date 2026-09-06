@@ -62,7 +62,11 @@ const command: Command = {
     if (title) embed.setTitle(title);
 
     try {
-      await (targetChannel as TextChannel).send({ embeds: [embed] });
+      // allowedMentions (official Discord feature): an announcement
+      // posted by an ADMIN as the bot must never ping roles/users the
+      // admin can't ping themselves via normal messages with embed
+      // bypass. Default: parse NOTHING — silent announcement embed.
+      await (targetChannel as TextChannel).send({ embeds: [embed], allowedMentions: { parse: [] } });
       log.info("ADMIN", `/announce SUCCESS: ${interaction.user.id} posted to channel ${channel.id} in guild ${interaction.guild.id}.`);
     } catch (error) {
       log.error("ADMIN", `/announce FAILED posting to channel ${channel.id}`, error);

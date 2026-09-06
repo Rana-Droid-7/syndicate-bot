@@ -86,6 +86,9 @@ const event: BotEvent<"messageCreate"> = {
                       `You were away for **${formatDuration(cleared.awayMs)}**.`,
                   ),
                 ],
+                // The returning user SHOULD be pinged (it's their
+                // welcome-back) — but nothing and nobody else.
+                allowedMentions: { users: [message.author.id] },
               })
               .catch((err) => log.error("AFK", "Failed to send welcome-back message", err));
           }
@@ -139,7 +142,12 @@ const event: BotEvent<"messageCreate"> = {
           const body =
             notices.join("\n") + (omitted > 0 ? `\n\n_…and ${omitted} more AFK member(s) not shown._` : "");
           await message
-            .reply({ embeds: [baseEmbed().setDescription(body)] })
+            .reply({
+              embeds: [baseEmbed().setDescription(body)],
+              // Only the AFK members themselves may be pinged by this
+              // notice — a crafted AFK reason can never ping anyone else.
+              allowedMentions: { users: [...afkTargets.keys()] },
+            })
             .catch((err) => log.error("AFK", "Failed to send AFK-mention notice", err));
         }
       }
@@ -184,16 +192,14 @@ const event: BotEvent<"messageCreate"> = {
         // lands.
         if (error instanceof CooldownError) {
           const label = `${config.prefix}${commandName}`;
-          const totalMs = (command.cooldownSeconds ?? 0) * 1000;
           const remainingMs = cooldowns.getRemaining(guildId, message.author.id, command.name ?? command.data?.name ?? "?");
           await message
-            .reply({ embeds: [cooldownCountdownEmbed(label, remainingMs, totalMs)] })
+            .reply({ embeds: [cooldownCountdownEmbed(label, remainingMs)] })
             .then((sent) => {
               startCooldownCountdown(
                 { edit: (payload) => sent.edit(payload as { embeds: never[] }) },
                 label,
                 remainingMs,
-                totalMs,
               );
             })
             .catch((err) => log.error("PREFIX", "Failed to send cooldown countdown", err));

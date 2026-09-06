@@ -155,7 +155,14 @@ async function deliver(client: Client, id: number): Promise<void> {
     }
 
     try {
-      await channel.send(`⏰ <@${reminder.user_id}>, reminder: **${reminder.content}**`);
+      // allowedMentions (official Discord feature): the ONLY ping this
+      // delivery can produce is the reminder's owner. The stored text
+      // may contain raw user mentions the author typed — without this
+      // gate, a crafted reminder could ping anyone days later.
+      await channel.send({
+        content: `⏰ <@${reminder.user_id}>, reminder: **${reminder.content}**`,
+        allowedMentions: { users: [reminder.user_id] },
+      });
       reminderRepository.markDelivered(id);
       log.info("TIMER", `Delivered reminder #${id} to ${reminder.user_id} in channel ${reminder.channel_id}.`);
     } catch (error) {

@@ -83,6 +83,11 @@ All notable changes to Syndicate Bot are documented here. In-chat, use `changelo
 - Copy audit (word-by-word): `>help <command>` cooldown field and the help home now advertise the live countdown honestly; boot-panel text verified truthful; no other stale claims found.
 - Pinned: 4 unit tests (progress-bar math, ready-flip, `getRemaining` live query, stmt-cache identity + invalidation) and 4 integration checks (live-holder refusal, stale-lock reclaim/release, countdown embed content, ready message) — 164 total.
 
+### Cycle 9 — IMPROVE: minimal live countdowns + official mention gating
+- **The cooldown countdown is now exactly as minimal as it should be** (per spec): `You are using **>command** too fast, try again in <t:R>.` — the countdown lives entirely in Discord's own dynamic timestamp, which Discord re-renders live in every client. When the window clears, exactly ONE edit flips the message: `You can use **>command** again now.` The cycle-8 progress bar and per-second edit loop are gone — one message, one official tag, one final edit, zero complexity.
+- **`allowedMentions` gates on every ping-capable surface** (official Discord feature): reminder deliveries can ping only the reminder's owner; AFK mention notices only the AFK members themselves; the `>suggest` echo only the invoker; `/announce` parses NOTHING (a silent announcement embed, ever). Before this, a crafted suggestion/reminder/AFK reason containing a raw `<@id>` could ping arbitrary users days later — sanitization broke `@everyone` but not individual mentions.
+- Pinned: countdown contract (exact wording, official tag, no bar) in unit + integration, the single ready-flip edit, and the suggest mention-gate payload. 165 integration total.
+
 ### Housekeeping
 - README: privileged-intent setup step (first boot failed with `Used disallowed intents` for anyone following it), accurate verify counts, changelog/embed harness in the development section.
 - Stale references cleaned: bug template's `0.5.1-beta` placeholder and "right-click context menu" option (that surface was removed in 0.5.4).
