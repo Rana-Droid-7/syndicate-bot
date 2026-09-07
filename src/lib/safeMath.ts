@@ -113,7 +113,7 @@ export async function safeEvaluate(expression: string): Promise<SafeEvalResult> 
 
       if (!msg.ok) {
         log.debug("CALC", `Worker reported evaluation error: ${msg.error}`);
-        resolve({ ok: false, error: `Couldn't evaluate \`${expression}\`. Try something like \`(3 + 4) * 2\`, \`sqrt(16)\`, or \`2^10\`.` });
+        resolve({ ok: false, error: `Couldn't evaluate \`${expression.replace(/`/g, "\u2019")}\`. Try something like \`(3 + 4) * 2\`, \`sqrt(16)\`, or \`2^10\`.` });
         return;
       }
 

@@ -23,14 +23,23 @@ export async function loadEvents(client: SyndicateClient): Promise<void> {
   );
   log.debug("BOOT", `Found ${files.length} event file(s): ${files.join(", ")}`);
 
+  let registered = 0;
   for (const file of files) {
     const filePath = path.join(eventsRoot, file);
     const imported = await import(pathToFileURL(filePath).href);
     const event: BotEvent | undefined = imported.default;
 
+    // Structural invalidity is a BOOT ERROR, same philosophy as the
+    // command loader: "a bot that quietly dropped a command is worse
+    // than a bot that doesn't boot" — and a silently-skipped
+    // messageCreate means the entire prefix lane is dead with only a
+    // warn line anyone could miss. This directory is a fixed, curated
+    // set; there is no legitimate "optional" event file.
     if (!event || !event.name || !event.execute) {
-      log.warn("BOOT", `Skipping invalid event file: ${file}`);
-      continue;
+      throw new Error(
+        `Event file ${file} is structurally invalid (missing name/execute) — refusing to boot. ` +
+          `Fix the file or remove it; a silently skipped event handler would disable part of the bot.`,
+      );
     }
 
     // Every event handler is wrapped uniformly here — individual
@@ -61,8 +70,12 @@ export async function loadEvents(client: SyndicateClient): Promise<void> {
     } else {
       client.on(event.name, wrapped);
     }
+    registered++;
     log.debug("BOOT", `Registered event listener "${String(event.name)}" (once=${!!event.once}) from ${file}`);
   }
 
-  log.info("BOOT", `Loaded ${files.length} event handler(s).`);
+  // Counts REGISTERED handlers, not files — a boot that registered
+  // fewer listeners than it found files is now impossible (invalid
+  // files throw), but the count should still never overstate.
+  log.info("BOOT", `Loaded ${registered} event handler(s).`);
 }

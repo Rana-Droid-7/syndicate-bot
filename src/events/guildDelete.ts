@@ -13,9 +13,9 @@ const event: BotEvent<"guildDelete"> = {
     log.info("EVENT", `Left guild "${guild.name}" (${guild.id}) — cleaning up its data.`);
 
     // Clean the departing guild's data. Deleting the guild row cascades
-    // to afk/reminders/warnings/suggestions (all FK ON DELETE CASCADE);
-    // in-memory reminder timers for it fail their delivery gracefully
-    // (channel is gone anyway).
+    // to afk/reminders/warnings/suggestions/polls (all FK ON DELETE
+    // CASCADE); in-memory reminder/poll timers for it fail their
+    // delivery gracefully (channel is gone anyway).
     let removed = 0;
     let prunedUsers = 0;
     // The in-memory AFK index drops FIRST: it's pure memory cleanup and

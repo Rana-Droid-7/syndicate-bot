@@ -73,7 +73,13 @@ export function isSnowflake(value: string): boolean {
 
 /** Strips a user mention to the raw ID: <@123> or <@!123> -> 123. */
 export function mentionToId(value: string): string {
-  return value.replace(/[<@!>]/g, "");
+  // Strict mention form first: <@id> or <@!id> exactly — a loose
+  // character-strip would CONCATENATE fragments ("123<@2>" -> "1232")
+  // into a different user's ID.
+  const mention = /^<@!?(\d{15,20})>$/.exec(value.trim());
+  if (mention) return mention[1];
+  // Not a mention: treat as a bare ID candidate, verbatim.
+  return value.trim();
 }
 
 /**
@@ -86,11 +92,11 @@ export function mentionToId(value: string): string {
  */
 export function parseIntInRange(raw: string, min: number, max: number, label: string, usage?: string): number {
   if (!/^-?\d+$/.test(raw.trim())) {
-    throw new UserInputError(`\`${raw}\` isn't a valid ${label} — it must be a whole number between ${min} and ${max}.`, usage);
+    throw new UserInputError(`\`${escapeInlineCode(raw)}\` isn't a valid ${label} — it must be a whole number between ${min} and ${max}.`, usage);
   }
   const value = Number(raw);
   if (!Number.isInteger(value) || value < min || value > max) {
-    throw new UserInputError(`\`${raw}\` isn't a valid ${label} — it must be a whole number between ${min} and ${max}.`, usage);
+    throw new UserInputError(`\`${escapeInlineCode(raw)}\` isn't a valid ${label} — it must be a whole number between ${min} and ${max}.`, usage);
   }
   return value;
 }
@@ -119,7 +125,11 @@ export function escapeMarkdownBold(text: string): string {
  */
 export function sanitizeEcho(text: string): string {
   return text
-    .replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200D\u2060\uFEFF\u2028\u2029]/g, "")
+    // Control chars, zero-width chars, word-joiners, BOM, line/paragraph
+    // separators, AND the bidi marks (U+200E/U+200F LTR/RTL overrides,
+    // U+061C Arabic letter mark) — bidi marks enable reversed-text
+    // spoofs ("nn.com\u200Fevi\u200Bl.ht" style) in echoed notices.
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200F\u061C\u2060\uFEFF\u2028\u2029]/g, "")
     .replace(/@(everyone|here)/gi, "@\u200b$1");
 }
 
@@ -139,6 +149,17 @@ export function sanitizeEchoOrReject(text: string): string | null {
 /** Safe code-block content: backticks can't close the block early. */
 export function escapeCodeBlock(text: string): string {
   return text.replace(/`/g, "'");
+}
+
+/**
+ * Safe inline-code content: a raw backtick in user input would close
+ * the span early (`` `x` <@victim> `` escapes the span and the
+ * mention renders as a real ping in CONTENT replies). Same neutralize
+ * strategy as escapeCodeBlock — one shared helper for every error
+ * message that interpolates a raw user string into single backticks.
+ */
+export function escapeInlineCode(text: string): string {
+  return text.replace(/`/g, "\u2019"); // right single quote — visually close, inert
 }
 
 /** Truncates on a logical boundary (last space) rather than mid-word. */

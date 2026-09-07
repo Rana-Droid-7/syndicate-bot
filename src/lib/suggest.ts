@@ -154,7 +154,7 @@ export function formatLookupDescription(matches: StartsWithMatch[]): LookupDescr
   }
 
   const extra = total - shown;
-  if (extra > 0) lines.push(`_…and ${extra} more — run \`/help\` to browse everything._`);
+  if (extra > 0) lines.push(`_…and ${extra} more — run \`${config.prefix}help\` to browse everything._`);
 
   return { description: lines.join("\n"), shown, total };
 }

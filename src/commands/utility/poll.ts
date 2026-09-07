@@ -1,210 +1,213 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ComponentType,
-  type ButtonInteraction,
-  type Message,
-} from "discord.js";
+import { type Message, PollLayoutType } from "discord.js";
 import type { Command } from "../../types/command.js";
+import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
+import { UserInputError, ContextError } from "../../lib/errors.js";
+import { escapeInlineCode, sanitizeEchoOrReject } from "../../lib/validation.js";
+import { pollService } from "../../services/polls.js";
 import { discordTimestamp } from "../../lib/format.js";
-import { UserInputError } from "../../lib/errors.js";
-import { sanitizeEchoOrReject } from "../../lib/validation.js";
-
 import { log } from "../../core/logger.js";
 
-const MIN_POLL_MINUTES = 1;
-const MAX_POLL_MINUTES = 60;
-const MAX_QUESTION_LENGTH = 150;
-const MAX_OPTION_LENGTH = 80;
+// Native Discord poll limits (developers/docs/resources/poll):
+//   question text: 300 chars, answer text: 55 chars, up to 10 answers.
+// The duration input is DECIMAL HOURS (0.5 = 30 minutes, 0.01 = 36
+// seconds) — Discord only schedules expiry in whole hours, so the
+// poll is created with the ceiling and ended EARLY through Discord's
+// official End Poll endpoint when the user's exact duration elapses.
+const MIN_POLL_HOURS = 0.01; // 36 seconds — anything shorter is spam-bait
+const MAX_POLL_HOURS = 168; // 7 days — one week is plenty for a chat poll
+const MAX_QUESTION_LENGTH = 300;
+const MAX_OPTION_LENGTH = 55;
 const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 10;
-const NUMBER_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
-const BAR_LENGTH = 12;
-const BUTTONS_PER_ROW = 5;
 
-function buildBar(count: number, total: number): string {
-  if (total === 0) return "░".repeat(BAR_LENGTH);
-  const filled = Math.round((count / total) * BAR_LENGTH);
-  return "█".repeat(filled) + "░".repeat(BAR_LENGTH - filled);
-}
-
-function buildResultsEmbed(question: string, options: string[], votes: Map<string, number>, ended: boolean, endUnix: number) {
-  const counts = options.map((_, i) => [...votes.values()].filter((v) => v === i).length);
-  const total = counts.reduce((a, b) => a + b, 0);
-
-  const lines = options.map((opt, i) => {
-    const count = counts[i];
-    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-    return `${NUMBER_EMOJI[i]} **${opt}**\n${buildBar(count, total)} ${count} vote${count === 1 ? "" : "s"} (${pct}%)`;
-  });
-
-  return baseEmbed()
-    .setTitle(`📊 ${question}`)
-    .setDescription(lines.join("\n\n"))
-    .setFooter({
-      text: ended
-        ? `Poll closed • ${total} total vote(s)`
-        : `Vote below • closes ${discordTimestamp(endUnix, "R")} • ${total} vote(s) so far`,
-    });
-}
-
-function chunkRows(buttons: ButtonBuilder[]): ActionRowBuilder<ButtonBuilder>[] {
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  for (let i = 0; i < buttons.length; i += BUTTONS_PER_ROW) {
-    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(i, i + BUTTONS_PER_ROW)));
+/**
+ * Splits the post-question argument tokens into options on commas.
+ *
+ * The dispatcher's quote-aware tokenizer runs FIRST, so a quoted
+ * multi-word option arrives as ONE token — `"yes, definitely",` as
+ * `yes, definitely,` (trailing comma outside the quotes). Splitting
+ * the joined string on every comma would tear quoted options apart;
+ * instead a comma terminates an option only when it trails a token
+ * (the `", "` separator shape), and commas inside a token stay
+ * literal (quote an option that itself contains commas... in which
+ * case its INTERNAL commas are exactly the ones that must survive).
+ *
+ *   "pizza", "pasta", "curry"   -> pizza / pasta / curry
+ *   pizza, pasta, curry         -> pizza / pasta / curry
+ *   "yes, definitely", no       -> yes, definitely / no
+ *   ice cream, cake              -> ice cream / cake  (multi-word, unquoted)
+ */
+function splitOptions(tokens: string[]): string[] {
+  const options: string[] = [];
+  let current = "";
+  const flush = () => {
+    const t = current.trim();
+    if (t) options.push(t);
+    current = "";
+  };
+  for (const token of tokens) {
+    let tok = token;
+    let terminators = 0;
+    while (tok.endsWith(",")) {
+      tok = tok.slice(0, -1);
+      terminators++;
+    }
+    if (tok) current = current ? `${current} ${tok}` : tok;
+    // A trailing comma ends this option — even if the accumulated
+    // text is empty (`,,`) it just produces nothing: `a,, b` is `a`
+    // then `b`, never a crash on an empty option.
+    if (terminators > 0) flush();
   }
-  return rows;
+  flush(); // the final option has no trailing comma
+  return options;
 }
 
 /**
- * Parses poll arguments. Two shapes accepted:
- *   poll "question" "opt1" "opt2" ["opt3"...] [minutes]
- *     (quoted — multi-word question and options, all clean)
- *   poll question opt1 opt2 [minutes]
- *     (unquoted — each whitespace token is one option; single-word
- *     options only, but fast to type)
- * The optional trailing bare integer is always the duration.
+ * Parses poll arguments in the v1.1.0 grammar:
+ *   poll <hours> "<question>" "<option 1>", "<option 2>" [, ...]
+ *
+ *   - hours: ALWAYS hours, as a plain decimal (1, 0.5, 0.01)
+ *   - question: quoted (multi-word) — first arg after the duration
+ *   - options: comma-separated, each optionally quoted (quoting is
+ *     required only for options that contain commas)
+ *
+ * Length validation runs AFTER sanitization, not before: breaking a
+ * mass-mention inserts a zero-width space (text EXPANDS), so a raw
+ * length check could pass 55 chars and still overflow the native
+ * poll's hard answer limit at the API. The order is the same
+ * sanitize-then-measure discipline every stored field follows.
  */
-export function parsePollArgs(args: string[]): { question: string; options: string[]; minutes: number } {
-  const rest = [...args];
+export function parsePollArgs(args: string[]): { question: string; options: string[]; hours: number } {
+  const USAGE = 'poll <hours> "<question>" "<option 1>", "<option 2>" [, ...]';
 
-  // Trailing bare integer = duration (default 5, 1-60).
-  let minutes = 5;
-  const last = rest[rest.length - 1];
-  if (rest.length > 2 && last !== undefined && /^\d+$/.test(last)) {
-    const parsed = Number(last);
-    if (!Number.isInteger(parsed) || parsed < MIN_POLL_MINUTES || parsed > MAX_POLL_MINUTES) {
-      throw new UserInputError(`Duration must be between ${MIN_POLL_MINUTES} and ${MAX_POLL_MINUTES} minutes.`, 'poll "<question>" "<option 1>" "<option 2>" [more options] [minutes]');
-    }
-    minutes = parsed;
-    rest.pop();
+  if (args.length < 3) {
+    throw new UserInputError(
+      `Give me a duration in hours, a quoted question, and at least two comma-separated options — \`${config.prefix}poll 2 "best food?" "pizza", "pasta"\`.`,
+      USAGE,
+    );
   }
 
-  const question = (rest.shift() ?? "").trim();
+  // --- duration: first arg, decimal hours, strictly plain digits ---
+  const timeToken = args[0];
+  if (!/^\d+(\.\d+)?$/.test(timeToken)) {
+    throw new UserInputError(
+      `\`${escapeInlineCode(timeToken)}\` isn't a valid duration — give me hours as a plain decimal number (\`1\`, \`0.5\` for 30 minutes, \`0.01\` for 36 seconds).`,
+      USAGE,
+    );
+  }
+  const hours = Number(timeToken);
+  if (!Number.isFinite(hours) || hours < MIN_POLL_HOURS || hours > MAX_POLL_HOURS) {
+    throw new UserInputError(
+      `Duration must be between ${MIN_POLL_HOURS} and ${MAX_POLL_HOURS} hours — decimals are how you go shorter (\`0.5\` = 30 minutes, \`0.01\` = 36 seconds).`,
+      USAGE,
+    );
+  }
+
+  // --- question: second arg (already quote-parsed by the dispatcher) ---
+  const question = sanitizeEchoOrReject(args[1].trim());
+  if (args[1].trim() && !question) {
+    throw new UserInputError("The question can't be all invisible characters — give it something readable.");
+  }
   if (!question) {
-    throw new UserInputError("Give me a question and at least two options.", 'poll "<question>" "<option 1>" "<option 2>" [more options] [minutes]');
+    throw new UserInputError("Give me a question in quotes — ask something.");
   }
   if (question.length > MAX_QUESTION_LENGTH) {
     throw new UserInputError(`Keep the question under ${MAX_QUESTION_LENGTH} characters.`);
   }
 
-  const options = rest.map((o) => o.trim()).filter(Boolean);
-  if (options.length < MIN_OPTIONS) {
-    throw new UserInputError(`Give me at least ${MIN_OPTIONS} options to vote between.`, 'poll "<question>" "<option 1>" "<option 2>" [more options] [minutes]');
+  // --- options: everything after the question, comma-separated ---
+  const rawOptions = splitOptions(args.slice(2));
+  if (rawOptions.length < MIN_OPTIONS) {
+    throw new UserInputError(`Give me at least ${MIN_OPTIONS} options, separated by commas.`, USAGE);
   }
-  if (options.length > MAX_OPTIONS) {
-    throw new UserInputError(`Max ${MAX_OPTIONS} options (got ${options.length}).`);
-  }
-  for (const option of options) {
-    if (option.length > MAX_OPTION_LENGTH) {
-      throw new UserInputError(`Options must be under ${MAX_OPTION_LENGTH} characters each.`);
-    }
+  if (rawOptions.length > MAX_OPTIONS) {
+    throw new UserInputError(`Max ${MAX_OPTIONS} options (got ${rawOptions.length}).`);
   }
 
-  return { question, options, minutes };
+  const options: string[] = [];
+  for (const raw of rawOptions) {
+    const safe = sanitizeEchoOrReject(raw);
+    if (!safe) {
+      throw new UserInputError(`Every option needs some readable text — option ${options.length + 1} is all invisible characters.`);
+    }
+    if (safe.length > MAX_OPTION_LENGTH) {
+      throw new UserInputError(`Options must be under ${MAX_OPTION_LENGTH} characters each.`);
+    }
+    options.push(safe);
+  }
+
+  return { question, options, hours };
 }
 
 const command: Command = {
   category: "utility",
   surface: "prefix-only",
   name: "poll",
-  usage: 'poll "<question>" "<option 1>" "<option 2>" [more options] [minutes]',
-  description: "Create a live button poll with a results bar.",
+  usage: 'poll <hours> "<question>" "<option 1>", "<option 2>" [, ...]',
+  description: "Create a native Discord poll — decimal-hour duration, comma options, automatic results recap.",
   details:
-    "Ask anything with 2–10 options: each option becomes a numbered button, and " +
-    "votes update a live bar chart on the message. One vote per person (latest " +
-    "click counts), runs 1–60 minutes (default 5), then closes automatically with " +
-    "final tallies and percentages and disables its buttons. Wrap the question and " +
-    "any multi-word options in quotes.",
-  examples: ['poll "best food?" "pizza" "pasta" "curry" 10', 'poll lunch sushi ramen'],
+    "Creates a real native Discord poll (the same kind Discord's own UI " +
+    "makes): native one-click voting and live tallies rendered by Discord " +
+    "itself. The duration is ALWAYS in hours — decimals welcome: `1` = one " +
+    "hour, `0.5` = 30 minutes, `0.01` = 36 seconds (the floor). Give the " +
+    "question in quotes, then 2–10 options separated by commas; quote an " +
+    "option that itself contains commas. When the set duration ends, the " +
+    "bot ends the poll through Discord's official end-poll feature and " +
+    "replies with the final tally — winner, vote counts, percentages, ties. " +
+    "The recap is persistent: it survives restarts and crashes, like " +
+    "reminders. Cap: 10 open polls per person per server.",
+  examples: ['poll 2 "best food?" "pizza", "pasta", "curry"', 'poll 0.01 "quick — flip a coin?" "heads", "tails"'],
   cooldownSeconds: 5,
 
   prefixExecute: async (message: Message, args: string[]) => {
-    const { question, options, minutes } = parsePollArgs(args);
-
-    // Every other user-text command sanitizes before an embed is
-    // built — poll was the lone gap: the question/option text went
-    // raw into the embed title/description AND the button labels,
-    // letting @everyone render and invisible characters spoof labels.
-    const safeQuestion = sanitizeEchoOrReject(question);
-    if (!safeQuestion) {
-      throw new UserInputError("The question can't be all invisible characters — give it something readable.");
-    }
-    const safeOptions: string[] = [];
-    for (const option of options) {
-      const safe = sanitizeEchoOrReject(option);
-      if (!safe) {
-        throw new UserInputError(`Every option needs some readable text — option ${safeOptions.length + 1} is all invisible characters.`);
-      }
-      safeOptions.push(safe);
+    if (!message.guild) throw new ContextError("Polls only work in a server.");
+    if (!message.channel.isTextBased() || !("send" in message.channel)) {
+      throw new ContextError("I can't post polls in this type of channel.");
     }
 
-    const durationMs = minutes * 60_000;
-    const endUnix = Math.floor((Date.now() + durationMs) / 1000);
+    const { question, options, hours } = parsePollArgs(args);
+    const closeUnixMs = Date.now() + Math.round(hours * 3_600_000);
+    const closeUnix = Math.floor(closeUnixMs / 1000);
 
-    log.info("CMD", `poll by ${message.author.tag} (${message.author.id}): "${safeQuestion}" with ${safeOptions.length} options for ${minutes}m`);
+    // Cap BEFORE posting: a cap error discovered after the reply
+    // would leave an orphaned poll with no recap promise in the
+    // channel. The pre-check throws the same clean taxonomy error
+    // create() enforces transactionally.
+    pollService.assertCanCreate(message.guild.id, message.author.id);
 
-    const votes = new Map<string, number>(); // userId -> option index
+    log.info("CMD", `poll by ${message.author.tag} (${message.author.id}): "${question}" with ${options.length} options for ${hours}h`);
 
-    const buttons = safeOptions.map((opt, i) =>
-      new ButtonBuilder()
-        .setCustomId(`poll-${i}`)
-        .setLabel(opt.slice(0, 80))
-        .setEmoji(NUMBER_EMOJI[i])
-        .setStyle(ButtonStyle.Primary),
-    );
-    const rows = chunkRows(buttons);
-
+    // One message: the poll, plus a bot-authored content line above it
+    // telling everyone when it REALLY closes. The content line matters
+    // for fractional durations — Discord's own UI shows its whole-hour
+    // ceiling (a 0.01h poll would display "1 hour" on its own), while
+    // our timer ends it at the exact requested moment.
     const sent = await message.reply({
-      embeds: [buildResultsEmbed(safeQuestion, safeOptions, votes, false, endUnix)],
-      components: rows,
+      content: `📊 Closes ${discordTimestamp(closeUnix, "R")} — final results posted here when it ends.`,
+      poll: {
+        question: { text: question },
+        answers: options.map((text) => ({ text })),
+        duration: Math.max(1, Math.ceil(hours)), // whole hours is all the create API accepts
+        allowMultiselect: false,
+        layoutType: PollLayoutType.Default,
+      },
     });
 
-    // Same serialization chain as v0.5.2's poll: votes apply to the
-    // Map synchronously, display updates chain in submission order so
-    // the shown counts can never regress.
-    let updateChain: Promise<void> = Promise.resolve();
-
-    const collector = sent.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: durationMs,
-      // Anyone may vote (polls are public by design) — the filter
-      // only stops bot accounts from voting.
-      filter: (i) => !i.user.bot,
-    });
-
-    collector.on("collect", async (i: ButtonInteraction) => {
-      const optionIndex = Number(i.customId.split("-")[1]);
-      votes.set(i.user.id, optionIndex);
-      log.info("CMD", `Poll vote: ${i.user.tag} (${i.user.id}) voted option ${optionIndex} ("${safeOptions[optionIndex]}") on "${safeQuestion}"`);
-
-      updateChain = updateChain
-        .then(async () => {
-          await i.update({ embeds: [buildResultsEmbed(safeQuestion, safeOptions, votes, false, endUnix)] });
-        })
-        .catch((error) => log.error("CMD", "Failed to update poll message after a vote", error));
-    });
-
-    collector.on("end", () => {
-      log.info("CMD", `Poll "${safeQuestion}" closed with ${votes.size} total vote(s).`);
-      const disabledRows = rows.map((row) =>
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          row.components.map((b) => ButtonBuilder.from(b).setDisabled(true)),
-        ),
-      );
-      // message.edit() (bot token) — interaction tokens are irrelevant
-      // here and polls can run up to 60 minutes.
-      updateChain = updateChain
-        .then(async () => {
-          await sent.edit({
-            embeds: [buildResultsEmbed(safeQuestion, safeOptions, votes, true, endUnix)],
-            components: disabledRows,
-          });
-        })
-        .catch((error) => log.error("CMD", "Failed to finalize poll message on close", error));
-    });
+    // The recap promise: a DB row (restart-survivable, same contract
+    // as reminders) — when the duration elapses, the poll is ended via
+    // the official End Poll endpoint and the final tally posted as a
+    // reply. Without the row, a restart would orphan every open poll.
+    await pollService.create(
+      message.client,
+      message.guild.id,
+      message.channelId,
+      sent.id,
+      message.author.id,
+      question,
+      options,
+      closeUnixMs,
+    );
   },
 };
 

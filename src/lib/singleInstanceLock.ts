@@ -55,13 +55,23 @@ export function acquireSingleInstanceLock(): boolean {
       }
       // Stale lock (dead PID) — reclaim it.
       log.info("BOOT", `Reclaimed stale lock from dead PID ${raw || "(empty)"}.`);
+      rmSync(LOCK_PATH);
     }
 
     mkdirSync(path.dirname(LOCK_PATH), { recursive: true });
-    writeFileSync(LOCK_PATH, String(process.pid), "utf8");
+    // "wx" = exclusive create: fails with EEXIST if ANY process wrote
+    // the file between our check and this write — the check-then-write
+    // race that let two simultaneous boots both "acquire" is closed
+    // by the OS, not by our timing.
+    writeFileSync(LOCK_PATH, String(process.pid), { encoding: "utf8", flag: "wx" });
     log.debug("BOOT", `Single-instance lock acquired (PID ${process.pid} -> ${LOCK_PATH}).`);
     return true;
   } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EEXIST") {
+      // Lost the create race: re-read and treat it as a fresh check.
+      return acquireSingleInstanceLock();
+    }
     // The lock must never PREVENT a legit boot on a weird filesystem —
     // degrade to unlocked with a loud warning rather than refusing.
     log.warn("BOOT", `Lockfile check failed (${(error as Error).message}) — continuing WITHOUT the single-instance guarantee.`);

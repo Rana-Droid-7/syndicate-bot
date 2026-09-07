@@ -200,7 +200,6 @@ console.log("\n=== COMMAND OUTPUTS (hostile maximal inputs) ===");
     ["./dist/commands/utility/afk.js", `>afk`, {}, "afk (no args, while not AFK)"],
     ["./dist/commands/utility/remindme.js", `>remindme "in 2 minutes" ${"y".repeat(300)}`, {}, "remindme (300-char text)"],
     ["./dist/commands/utility/suggest.js", `>suggest ${"s".repeat(500)}`, {}, "suggest (500-char, unquoted)"],
-    ["./dist/commands/utility/poll.js", `>poll ${"q".repeat(150)} ${Array.from({length: 10}, (_, i) => "o".repeat(80)).join(" ")} 60`, {}, "poll (max question + 10 x 80-char options)"],
     ["./dist/commands/utility/roll.js", `>roll 20d9999`, {}, "roll (20 dice)"],
     ["./dist/commands/utility/roll.js", `>roll 20d9999+999`, {}, "roll (20 dice + modifier)"],
     ["./dist/commands/utility/snowflake.js", `>snowflake 1300000000000000000`, {}, "snowflake"],
@@ -222,6 +221,95 @@ console.log("\n=== COMMAND OUTPUTS (hostile maximal inputs) ===");
     } catch (e) {
       report(`${label} — harness error`, false, e.message.slice(0, 120));
     }
+  }
+}
+
+// ============================================================
+// 2b) Native poll output — v1.1.0: `>poll <hours> "<question>"
+// "<opt 1>", "<opt 2>" posts a NATIVE Discord poll (no embed, no
+// components). Discord's hard limits for polls are question<=300,
+// answers<=10 of <=55 chars — assert the real payload honors them,
+// and that over-limit inputs are rejected as UserInputErrors instead
+// of producing an API-rejected payload.
+// ============================================================
+console.log("\n=== NATIVE POLL OUTPUT (maximal + hostile inputs) ===");
+{
+  const pollCmd = (await import("./dist/commands/utility/poll.js")).default;
+  const { parseQuotedArgs } = await import("./dist/lib/validation.js");
+  const { UserInputError } = await import("./dist/lib/errors.js");
+
+  const runPoll = async (content) => {
+    const { args } = parseQuotedArgs(content.replace(/^>/, ""));
+    args.shift()?.toLowerCase();
+    const captured = [];
+    const message = makeMessage(content);
+    message.reply = async (payload) => {
+      captured.push(payload);
+      return { id: "x", edit: async () => null, createdTimestamp: Date.now(), createMessageComponentCollector: () => ({ on: () => {}, stop: () => {} }) };
+    };
+    try {
+      await pollCmd.prefixExecute(message, args);
+      return { ok: true, payload: captured[0] };
+    } catch (error) {
+      return { ok: false, error };
+    }
+  };
+
+  // Maximal VALID poll: 168h, 300-char question, 10 x 55-char options
+  const maxQ = "q".repeat(300);
+  const maxOpts = Array.from({ length: 10 }, () => "o".repeat(55)).map((o) => `"${o}"`).join(", ");
+  const max = await runPoll(`>poll 168 "${maxQ}" ${maxOpts}`);
+  report("poll: maximal valid input accepted", max.ok && Boolean(max.payload?.poll),
+    max.ok ? "" : `threw: ${max.error?.message}`);
+  if (max.ok) {
+    const poll = max.payload.poll;
+    const errs = [];
+    if ((poll.question?.text ?? "").length > 300) errs.push(`question ${(poll.question?.text ?? "").length} > 300`);
+    if ((poll.answers ?? []).length > 10) errs.push(`${poll.answers.length} answers > 10`);
+    for (let i = 0; i < (poll.answers ?? []).length; i++) {
+      const len = (poll.answers[i].text ?? "").length;
+      if (len > 55) errs.push(`answer[${i}] ${len} > 55`);
+    }
+    if (typeof poll.duration !== "number" || poll.duration < 1 || poll.duration > 768) errs.push(`duration ${poll.duration} out of range`);
+    if (poll.allowMultiselect !== false) errs.push("allowMultiselect not false");
+    report("poll: native payload within Discord's hard limits (300/10x55/768h)", errs.length === 0, errs.join("; "));
+    report("poll: no embeds/components on the payload", !max.payload.embeds && !max.payload.components);
+    report("poll: fractional hours map to the whole-hour API ceiling",
+      (await runPoll('>poll 0.01 "q?" "a", "b"')).payload?.poll?.duration === 1,
+      "0.01h should create with duration 1");
+  }
+
+  // Hostile over-limit inputs: rejected cleanly, never a payload
+  const opt55 = "o".repeat(55);
+  const opt56 = "o".repeat(56);
+  const hostile = [
+    [`>poll 1 ${'"'.repeat(0)}${"q".repeat(301)}x "a", "b"`, "301-char question"],
+    [`>poll 1 "q?" "${opt56}", "b"`, "56-char option"],
+    [`>poll 1 "q?" ${Array.from({ length: 11 }, (_, i) => `"o${i}"`).join(", ")}`, "11 options"],
+    [`>poll 769 "q?" "a", "b"`, "769 hours"],
+    [`>poll 0.001 "q?" "a", "b"`, "0.001 hours (below floor)"],
+    [`>poll 1 "${"\u200B".repeat(5)}" "a", "b"`, "invisible-only question"],
+    [`>poll banana "q?" "a", "b"`, "non-numeric duration"],
+  ];
+  for (const [input, label] of hostile) {
+    const r = await runPoll(input);
+    report(`poll: ${label} rejected as UserInputError (no payload)`,
+      !r.ok && r.error instanceof UserInputError && !r.payload,
+      r.ok ? "accepted (payload sent)" : `wrong error class: ${r.error?.name}`);
+  }
+
+  // The recap embed (posted after close) is a REAL embed the bot
+  // produces — validate its worst case against Discord's hard limits:
+  // 300-char question + 10 x 55-char options, all rendered into the
+  // description.
+  {
+    const { buildRecapEmbed } = await import("./dist/services/polls.js");
+    const maxOptions = Array.from({ length: 10 }, () => "o".repeat(55));
+    const answers = new Map(Array.from({ length: 10 }, (_, i) => [i + 1, { voteCount: 12345 }]));
+    const recap = buildRecapEmbed("q".repeat(300), maxOptions, { poll: { answers } });
+    validateEmbed("poll recap (max question + 10 x 55-char options, big counts)", recap);
+    // ties render every winner — the widest verdict line
+    validateEmbed("poll recap (tie verdict)", buildRecapEmbed("t?", ["a".repeat(55), "b".repeat(55)], { poll: { answers: new Map([[1, { voteCount: 7 }], [2, { voteCount: 7 }]]) } }));
   }
 }
 

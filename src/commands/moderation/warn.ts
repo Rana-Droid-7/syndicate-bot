@@ -82,7 +82,7 @@ const command: Command = {
       const check = canModerate(actor, target, botMember);
       if (!check.ok) {
         log.warn("MOD", `/warn add denied by hierarchy check: ${interaction.user.id} -> ${targetUser.id}: ${check.reason}`);
-        await interaction.reply({ content: check.reason!, flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: check.reason, flags: MessageFlags.Ephemeral });
         return;
       }
 

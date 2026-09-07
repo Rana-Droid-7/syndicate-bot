@@ -77,4 +77,15 @@ export const warningRepository = {
         `UPDATE warnings SET active = 0 WHERE guild_id = ? AND user_id = ? AND active = 1`)
       .run(guildId, userId).changes;
   },
+
+  /**
+   * Retention: inactive (cleared/rolled-off) warnings past the
+   * retention window. The 25-cap prune only FLIPS rows to active=0 —
+   * without this, a user's lifetime warning history accumulates
+   * unboundedly (and keeps them referenced in `users`).
+   */
+  purgeInactive(olderThanUnixMs: number): number {
+    return stmt(`DELETE FROM warnings WHERE active = 0 AND created_unix_ms < ?`)
+      .run(olderThanUnixMs).changes;
+  },
 };

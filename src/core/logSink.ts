@@ -56,6 +56,12 @@ const state: SinkState = {
 export function initLogSink(client: Client, channelId: string): void {
   state.client = client;
   state.channelId = channelId;
+  // A soft restart hands us a FRESH client — the cached channel
+  // object belongs to the destroyed one (its .client is dead, so the
+  // next send fails, drops a batch, and pauses the mirror for 60s
+  // exactly during the restart chatter that matters most). Drop the
+  // cache so the next flush re-resolves against the new client.
+  state.channel = null;
 }
 
 function emergencyFlush(): void {

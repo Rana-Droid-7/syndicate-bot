@@ -2,14 +2,15 @@ import type { Client } from "discord.js";
 import { flushLogSink } from "../core/logSink.js";
 import { closeDb } from "../database/client.js";
 import { reminderService } from "../services/reminders.js";
+import { pollService } from "../services/polls.js";
 import { releaseSingleInstanceLock } from "./singleInstanceLock.js";
 import { log } from "../core/logger.js";
 
 /**
  * The single graceful-exit path, shared by every shutdown trigger
  * (/boot's DM panel and OS signals). Ordering is load-bearing and
- * must never drift between triggers: reminder timers stand down,
- * the log sink drains while the connection is alive, Discord
+ * must never drift between triggers: reminder AND poll timers stand
+ * down, the log sink drains while the connection is alive, Discord
  * disconnects, and the DB closes LAST so in-flight deliveries can't
  * race the close.
  *
@@ -23,6 +24,7 @@ export async function gracefulExit(
 ): Promise<never> {
   log.info("SHUTDOWN", `${opts.reboot ? "Reboot" : "Shutdown"} (${opts.reason})${opts.requestedBy ? ` by ${opts.requestedBy}` : ""} — destroying client and exiting.`);
   reminderService.beginShutdown();
+  pollService.beginShutdown();
   await flushLogSink().catch(() => null);
   await client.destroy().catch(() => null);
   closeDb();

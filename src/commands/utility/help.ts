@@ -11,6 +11,7 @@ import type { SyndicateClient } from "../../core/client.js";
 import { config } from "../../core/config.js";
 import { log } from "../../core/logger.js";
 import { errorEmbed, baseEmbed } from "../../lib/embeds.js";
+import { escapeInlineCode } from "../../lib/validation.js";
 import {
   buildHelpHomeEmbed,
   buildCategoryEmbed,
@@ -37,7 +38,7 @@ function buildUnknownCommandEmbed(
   if (closest) {
     const name = closest.name ?? closest.data?.name ?? "?";
     return errorEmbed(
-      `I don't know a command called \`${prefix}${query}\` — did you mean **${name}**?`,
+      `I don't know a command called \`${prefix}${escapeInlineCode(query)}\` — did you mean **${name}**?`,
     ).addFields({ name: "Try this", value: `\`${prefix}help ${name}\``, inline: false });
   }
 
@@ -53,14 +54,14 @@ function buildUnknownCommandEmbed(
         return `• **${typed}** — _${c.description}_`;
       })
       .join("\n");
-    return errorEmbed(`I don't know a command called \`${prefix}${query}\`, but these look close:\n\n${lines}`);
+    return errorEmbed(`I don't know a command called \`${prefix}${escapeInlineCode(query)}\`, but these look close:\n\n${lines}`);
   }
 
   // 3) Nothing close — point at the menu.
   return baseEmbed()
     .setColor(0xed4245)
     .setDescription(
-      `❌ I don't know a command called \`${prefix}${query}\`.\n\n` +
+      `❌ I don't know a command called \`${prefix}${escapeInlineCode(query)}\`.\n\n` +
         `Run \`${prefix}help\` and browse the categories to see everything I can do.`,
     );
 }

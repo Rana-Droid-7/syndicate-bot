@@ -9,7 +9,7 @@ import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
-import { mentionToId, isSnowflake } from "../../lib/validation.js";
+import { escapeInlineCode, mentionToId, isSnowflake } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
 export function buildAvatarEmbed(user: User) {
@@ -62,7 +62,7 @@ const command: Command = {
     const targetId = mentioned?.id ?? mentionToId(rawArg!);
     if (!isSnowflake(targetId)) {
       log.debug("PREFIX", `${config.prefix}avatar given invalid target: ${JSON.stringify(rawArg)}`);
-      throw new UserInputError(`\`${rawArg}\` doesn't look like a valid user mention or ID.`, "avatar [@user]");
+      throw new UserInputError(`\`${escapeInlineCode(rawArg)}\` doesn't look like a valid user mention or ID.`, "avatar [@user]");
     }
 
     const user = await message.client.users.fetch(targetId).catch(() => null);

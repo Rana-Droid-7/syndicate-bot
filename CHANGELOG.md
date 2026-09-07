@@ -2,6 +2,71 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
 
+## v1.1.1 — 2026-09-07 (Cycle I: adversarial audit — lifecycle, injection, consistency)
+
+**A full-repo adversarial audit** (four parallel deep-audit passes: commands+lib, core+services+repos, security/leak, docs+tests) surfaced ~60 findings across every layer — every behavioral one fixed here and pinned by a regression check that runs in CI.
+
+### Critical (lifecycle races — the soft-restart family)
+- **Repeated `/boot` Reboots leaked live clients**: `softRestart` destroyed the first boot's captured client reference — on the SECOND restart that reference was already dead while the client from the FIRST restart (still connected, fully event-wired) was never destroyed. Two gateways on one token, the exact double-instance incident the lock exists to prevent, recreated in-process. Signal handlers held the same stale reference (offline announcement silently lost post-restart). Both now resolve the CURRENT client through a mutable binding.
+- **Reminder timers held destroyed clients**: a timer armed before a restart fired after it, the fetch failed on the dead connection, and a deliverable reminder was permanently marked `failed`. Timers now resolve through a live module-scoped client (the fix polls already carried), and a send failure during a restart window is detected by deterministic reference-comparison (not error-text word-matching) — the row stays pending for the fresh boot.
+- **`gracefulExit` never stood polls down**: `/boot` Shutdown raced poll close-timers against the DB close while the comment claimed identical ordering to the signal path. Both subsystems now stand down on every exit path.
+- **Signal handlers registered after the slow boot steps** their comment claimed to precede: Ctrl+C during command-loading/login was still a hard exit with zero cleanup. Handlers are now armed before `bootClient()` runs.
+
+### Security / injection
+- **`>ts` error reply could ping anyone** (the audit's one real content-ping vector): the unparseable-time error interpolated raw input into a plain CONTENT reply — a user backtick closed the inline code span and a smuggled `<@id>` rendered outside it as a real mention. The error is now a taxonomy error (shared rendering, cooldown refund) with the input escaped.
+- **Markdown/backtick breakout closed across ~15 error surfaces**: every error message interpolating raw user input (`>roll`, `>rps`, `>calc`, `>poll`, `>remindme`, `>joke`, `>8ball`, `>help`, avatar/banner/userinfo/snowflake, `parseIntInRange`) now routes through a shared `escapeInlineCode` — attacker-authored bold/links can no longer render inside the bot's error embeds.
+- **Bidi marks stripped** (U+200E/U+200F/U+061C — reversed-text link spoofs in echoed notices).
+- **`mentionToId` is strict now**: `"12345<@2>"` used to strip mention chars and CONCATENATE the digits into a different user's ID; it now accepts only the exact `<@id>`/`<@!id>` forms or a bare ID.
+- **`/warn add` reason shaped in the service** (empty/oversized reasons from a crafted direct API call can no longer hit the DB CHECK and crash to a generic error).
+- **Poll recap bold-escapes** question/options like every other echoed field.
+
+### Consistency (the drift the audits exist to kill)
+- **Prefix-lane errors now devlog**: an unexpected crash in a prefix command is as visible in the dev channel as one in a slash command (previously console-only — every public command is prefix-lane).
+- **Event loader refuses to boot** on a structurally invalid event file (was: WARN + silently skip — a typo'd `messageCreate` export would kill the entire prefix lane with one missable log line). Command-category values validated at load; mixed-case prefix aliases rejected at load (dispatch lowercases the input — they were unreachable); deploy-time validation now checks everything boot-time checks (surface, execute presence) and clears stale global registrations when deploying to a dev guild.
+- **jokes repository rides the stmt() cache** again (three methods had silently reverted to per-call `prepare()` — the exact cost the cache exists to eliminate).
+
+### Durability & hygiene
+- **Terminal-row retention**: delivered/failed reminders, closed/failed polls, and inactive warnings older than 30 days are now purged by an hourly pass — previously every row the bot ever wrote accumulated forever (and pinned its author's `users` row against the orphan prune).
+- **The `synchronous = NORMAL` comment told the truth finally** (it claimed fsync-per-commit; WAL mode checkpoints only). The accepted tradeoff is now stated with the flip-to-FULL escape hatch.
+- **Single-instance lock uses exclusive create** (`wx` flag): the check-then-write race that let two simultaneous boots both "acquire" is closed by the OS.
+- **`>calc` rejects over-length expressions** (200+ chars) instead of silently truncating them into a wrong answer.
+- **AFK empty-set cleanup** (a guild whose last AFK member returns no longer leaves a dead Set for the process lifetime), **logSink channel cache dropped on soft restart** (first post-restart flush no longer fails against the destroyed client), **`>help` lookup pointer fixed** (it advertised a nonexistent `/help` — help is prefix-only), **slash-lane cooldown ready-flip parity**, **wrong log tags** (unknown slash command: EVENT→CMD), and **a unit-test name that lied** about what it fed the tokenizer.
+
+### Optimizations
+- **AFK mention path pre-filters through the in-memory index**: only mentioned users actually AFK reach the SQL layer (previously every mention in a guild with any AFK user ran a full IN-query — and each distinct mention-count minted a new cached prepared statement forever).
+- Poll cap pre-checked BEFORE the poll posts (a cap violation previously left an orphaned poll in the channel with no recap promise).
+
+### Verification
+- **9 new integration pins + 3 unit pins**: hostile-input escaping (backticks), mentionToId concatenation, bidi stripping, restart-window delivery (deterministic reference-comparison probe), poll cap pre-check, retention purge semantics (old-terminal purged, fresh/pending kept), event-loader boot-fail (subprocess probe against a planted invalid file).
+- Full loop: 54 unit · 188 integration · 88 embed · 25 lookup · 3 timer · dispatcher torture · 27 doc checks.
+
+## v1.1.0 — 2026-09-07 (poll goes native, with recaps)
+
+**`>poll` now creates a real native Discord poll** — the same poll object you get from Discord's own UI — instead of the makeshift button+embed contraption, with a decimal-hour duration grammar and an automatic final-tally recap after close.
+
+### New grammar
+- **`poll <hours> "<question>" "<option 1>", "<option 2>", ...`** — duration first, question quoted, options comma-separated (quote options that contain commas themselves).
+- **Duration is ALWAYS hours, decimals welcome**: `1` = one hour, `0.5` = 30 minutes, `0.01` = 36 seconds (the floor), ceiling 168h (7 days). Strict decimal parsing — hex/scientific/underscore forms rejected, same rule as every other number input.
+- Discord only schedules poll expiry in whole hours at creation, so fractional durations are created at the whole-hour ceiling and **ended early through Discord's official End Poll endpoint** when the user's exact duration elapses.
+
+### The recap (the headline feature)
+- When the set duration ends, the bot ends the poll through the official end-poll feature and **replies to the poll message with the final tally**: every option with vote count and percentage of total, winner(s) marked 🏆, ties reported as ties, and a plain-language verdict ("pizza won with 3 of 4 votes (75%)").
+- **The recap is persistent like reminders**: every poll posts a `polls` DB row (migration 003), timers are just delivery optimization, rows are restored on every boot, a 60s sweep catches strays, rate-limited close/recap attempts stay open and retry (never terminally failed by a 429), deleted polls/channels go terminal cleanly, and an already-expired poll (`PollAlreadyExpired`) is treated as the success path it is — the tally is final either way.
+- Cap: 10 open polls per user per guild (clean `UserInputError`, cooldown refunded).
+- The recap pings only the poll's author (`allowedMentions` gate) — stored question/options can't smuggle pings days later.
+
+### What changed under the hood
+- **Native lifecycle**: voting (one vote per user, anonymous), live tallies, and percentages are rendered by Discord itself in every client. The old implementation's button collector, in-memory vote map, serialized edit chain, close-race handling, and 15-minute interaction-token workaround are all deleted — none of that exists anymore.
+- **Limits follow Discord's own**: question ≤300 chars, options ≤10 of ≤55 chars each — enforced AFTER sanitization (the sanitize-then-measure discipline: mention-breaking expands text, so a raw length check could pass 55 and blow the API limit).
+- **New `polls` service + repository**, wired into the boot restore and every shutdown path; `pruneOrphanedUsers` covers the new table (the exact eightball bug class); the 429 detector moved to shared `lib/rateLimit` so reminders and poll closeout can't drift.
+- **Self-review hardening** (the adversarial pass over the new code itself): close timers resolve through a module-scoped live-client reference instead of their closure, so a timer armed before a soft restart can't fire against the destroyed client and terminally fail a healthy poll; `closePoll` carries an outer catch so a fire-and-forget timer can never produce an unhandled rejection (the row is left open for the sweep instead); recap counts map by the answers collection's ORDER (Discord's docs: "we recommend against depending on" the answer_id sequence); and a corrupt options payload goes terminal instead of making the 60s sweep retry a poison row forever.
+- The poll message carries a one-line content note ("Closes <t:R> — final results posted here when it ends") because Discord's own UI displays the whole-hour ceiling, not the user's fractional duration.
+
+### Verification (pinned in CI)
+- **Unit (51)**: the new grammar (decimal/fractional durations, comma-inside-quoted-options, multi-word unquoted options, `a,,b` gaps, hex/scientific duration rejection, bounds), post-sanitize limits, and the recap builder (single winner, tie, zero-votes, sparse answer counts).
+- **Integration (179)**: full lifecycle through the real service — overdue row closes + recap posts with winner/counts/percentages, author-only mention gate, `PollAlreadyExpired` → recap still posts, 429 stays open for retry, hard errors terminal, deleted message terminal without recap, restore() reschedules, per-user cap throws the real taxonomy error, and a corrupt options payload goes terminal instead of spinning the sweep forever.
+- **Embeds (88)**: maximal valid payload (300/10×55/168h) against Discord's hard poll limits, fractional-hours→ceiling mapping, seven hostile inputs rejected as `UserInputError` with no payload, and the recap embed's worst cases (max question + 10×55 options with big counts, tie verdict) validated against Discord's embed limits.
+
 ## v1.0.1 — 2026-09-05 (post-1.0 hardening: six adversarial audit cycles)
 
 **The release the audits earned.** Five consecutive adversarial cycles against the 1.0.0 codebase (each re-auditing the previous cycle's fixes, empirically confirming every suspicion with repro scripts before touching code) surfaced 3 critical bugs, 10+ high/medium issues, and a long tail of nits — every one fixed and pinned by a regression check that runs in CI from now on.

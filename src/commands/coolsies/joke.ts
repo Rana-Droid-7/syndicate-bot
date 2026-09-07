@@ -4,6 +4,7 @@ import { config } from "../../core/config.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { jokeService } from "../../services/jokes.js";
 import { UserInputError } from "../../lib/errors.js";
+import { escapeInlineCode } from "../../lib/validation.js";
 import { buildCollectionHandlers } from "../../lib/collection.js";
 
 const USAGE = 'joke · joke add "<joke>" · joke list [page] · joke remove <id> · joke edit <id> "<new>" · joke enable/disable <id>';
@@ -77,7 +78,7 @@ const command: Command = {
     if (handled) return;
 
     throw new UserInputError(
-      `I don't know a joke subcommand called \`${sub}\` — plain \`${config.prefix}joke\` tells one.`,
+      `I don't know a joke subcommand called \`${escapeInlineCode(sub)}\` — plain \`${config.prefix}joke\` tells one.`,
       USAGE,
     );
   },

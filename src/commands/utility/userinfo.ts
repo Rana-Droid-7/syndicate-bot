@@ -7,7 +7,7 @@ import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
-import { mentionToId, isSnowflake } from "../../lib/validation.js";
+import { escapeInlineCode, mentionToId, isSnowflake } from "../../lib/validation.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
 
@@ -150,7 +150,7 @@ const command: Command = {
       const candidate = mentionToId(args[0]);
       if (!isSnowflake(candidate)) {
         throw new UserInputError(
-          `\`${args[0]}\` doesn't look like a valid user mention or ID.`,
+          `\`${escapeInlineCode(args[0])}\` doesn't look like a valid user mention or ID.`,
           "userinfo [@user]",
         );
       }

@@ -1,10 +1,23 @@
 import type { Client } from "discord.js";
 import { reminderRepository, type ReminderRow } from "../repositories/reminders.js";
+import { pollRepository } from "../repositories/polls.js";
+import { warningRepository } from "../repositories/warnings.js";
 import { safeSetTimeout } from "../lib/safeTimeout.js";
 import { UserInputError } from "../lib/errors.js";
+import { isRateLimitError } from "../lib/rateLimit.js";
 import { log } from "../core/logger.js";
 
+// Last retention pass (see startSweep) — starts at 0 so the first
+// sweep after boot runs one immediately (catching rows that aged out
+// while the bot was down).
+let lastRetentionPass = 0;
+
 const SWEEP_INTERVAL_MS = 60_000; // periodic due-check, safety net for missed timers
+// Retention cadence: terminal rows are purged hourly rather than
+// every sweep — the purge is a range DELETE over indexed status
+// columns, cheap enough, but there's no reason to run it 1440x/day.
+const RETENTION_INTERVAL_MS = 60 * 60 * 1000;
+const RETENTION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // keep terminal rows 30 days
 // Cap on pending reminders per user per guild — without one, a 5s
 // cooldown still allows ~17k/day and every row becomes a boot timer.
 export const MAX_PENDING_PER_USER = 25;
@@ -14,6 +27,16 @@ let shuttingDown = false;
 // Sweep plumbing (single interval per process — see startSweep).
 let sweepInterval: ReturnType<typeof setInterval> | null = null;
 let sweepClient: Client = null as unknown as Client;
+// The client deliver() resolves channels against. Timers capture the
+// client that armed them in a closure — but a soft restart destroys
+// that client and creates a fresh one in the SAME process, and a
+// timer armed before the restart can fire after it. Resolving against
+// this module-scoped reference (refreshed on every boot/restore)
+// instead of the closure makes those timers hit the LIVE client —
+// the stale-client race that would otherwise terminally fail a
+// healthy reminder on a destroyed connection (the same fix polls
+// already carries).
+let activeClient: Client = null as unknown as Client;
 
 /** Clears the shutdown flag for a soft restart (new client, same process). */
 export function resetForRestart(): void {
@@ -38,10 +61,12 @@ export const reminderService = {
     log.info("TIMER", `Reminder #${row.id} for ${row.user_id} scheduled — firing in ${delay}ms.`);
     // unref'd: the Discord connection, not a pending reminder timer,
     // keeps the live process alive — and one-shot harnesses can exit
-    // without waiting out a stray reminder.
+    // without waiting out a stray reminder. The callback resolves
+    // through activeClient, NOT the closure: a soft restart replaces
+    // the client after this timer is armed.
     safeSetTimeout(
       () => {
-        void deliver(client, row.id);
+        void deliver(activeClient, row.id);
       },
       delay,
       undefined,
@@ -72,6 +97,8 @@ export const reminderService = {
       );
     }
     const id = reminderRepository.create(guildId, channelId, userId, content, dueUnixMs);
+    // First write after a soft restart may precede restore()'s refresh.
+    activeClient = client;
     const row = reminderRepository.get(id);
     if (row) this.schedule(client, row);
     else log.error("TIMER", `Reminder #${id} vanished after insert — not scheduled.`);
@@ -80,6 +107,7 @@ export const reminderService = {
 
   /** Startup pass: reschedule everything still pending. */
   restore(client: Client): number {
+    activeClient = client;
     const pending = reminderRepository.pending();
     const now = Date.now();
     let overdue = 0;
@@ -102,6 +130,7 @@ export const reminderService = {
    */
   startSweep(client: Client): void {
     sweepClient = client;
+    activeClient = client;
     if (sweepInterval !== null) return;
     sweepInterval = setInterval(() => {
       if (shuttingDown) return;
@@ -110,7 +139,21 @@ export const reminderService = {
           log.warn("TIMER", `Sweep found overdue reminder #${row.id} — delivering.`);
           void deliver(sweepClient, row.id);
         }
-      } catch (error) {
+        // Retention pass (hourly): terminal reminder/poll/warning rows
+        // past the 30-day window are deleted so the tables (and the
+        // `users` rows they reference) don't grow forever. Rows in
+        // terminal status have already kept (or voided) their promise.
+        if (Date.now() - lastRetentionPass >= RETENTION_INTERVAL_MS) {
+          lastRetentionPass = Date.now();
+          const cutoff = Date.now() - RETENTION_WINDOW_MS;
+          const r = reminderRepository.purgeTerminal(cutoff);
+          const p = pollRepository.purgeTerminal(cutoff);
+          const w = warningRepository.purgeInactive(cutoff);
+          if (r + p + w > 0) {
+            log.info("TIMER", `Retention pass: purged ${r} terminal reminder(s), ${p} terminal poll(s), ${w} inactive warning(s) older than 30 days.`);
+          }
+        }
+      } catch {
         // DB closed between the shutdown flag and here — stand down.
         log.debug("TIMER", "Sweep skipped (storage unavailable).");
       }
@@ -147,7 +190,12 @@ async function deliver(client: Client, id: number): Promise<void> {
     }
     if (!reminder || reminder.status !== "pending") return;
 
-    const channel = await client.channels.fetch(reminder.channel_id).catch(() => null);
+    // Snapshot the live client NOW: a soft restart between this line
+    // and the send below replaces activeClient — a failure on the
+    // stale reference must stay pending (the fresh boot's restore
+    // reschedules it), not terminally fail a deliverable reminder.
+    const deliveryClient = activeClient;
+    const channel = await deliveryClient.channels.fetch(reminder.channel_id).catch(() => null);
     if (!channel || !channel.isTextBased() || !("send" in channel)) {
       log.warn("TIMER", `Reminder #${id} undeliverable — channel ${reminder.channel_id} gone. Marking failed.`);
       reminderRepository.markFailed(id);
@@ -176,6 +224,16 @@ async function deliver(client: Client, id: number): Promise<void> {
         log.warn("TIMER", `Reminder #${id} hit a rate limit — staying pending, the sweep will retry.`);
         return;
       }
+      // The soft-restart window: if a restart replaced the client
+      // between the snapshot above and now, this failure happened on
+      // a DYING connection — the row stays pending and the fresh
+      // boot's restore pass reschedules it. Deterministic reference
+      // comparison, not error-message word-matching (wording changes
+      // between discord.js versions — the lesson of the 429 cycle).
+      if (deliveryClient !== activeClient) {
+        log.warn("TIMER", `Reminder #${id} send failed on a replaced client (soft restart) — staying pending.`);
+        return;
+      }
       log.error("TIMER", `Failed to deliver reminder #${id}`, error);
       reminderRepository.markFailed(id);
     }
@@ -191,20 +249,3 @@ async function deliver(client: Client, id: number): Promise<void> {
 // IDs with a delivery attempt currently in flight. Module-scoped so
 // timers and the sweep share the same view.
 const delivering = new Set<number>();
-
-/**
- * Rate-limit detection for a failed channel send. Structured signals
- * first — discord.js throws DiscordAPIError with .status (HTTP 429)
- * and/or .code (rate-limit responses carry specific codes); message-
- * text matching is the fallback because API error wording can change
- * between versions.
- */
-function isRateLimitError(error: unknown): boolean {
-  if (error && typeof error === "object") {
-    const e = error as { status?: unknown; code?: unknown; message?: unknown };
-    if (e.status === 429) return true;
-    if (typeof e.code === "string" && /^RATE_LIMIT/i.test(e.code)) return true;
-  }
-  const messageText = error instanceof Error ? error.message.toLowerCase() : "";
-  return messageText.includes("rate limit") || messageText.includes("429");
-}

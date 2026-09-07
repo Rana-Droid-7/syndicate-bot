@@ -3,6 +3,7 @@ import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
+import { escapeInlineCode } from "../../lib/validation.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
 
@@ -63,7 +64,7 @@ const command: Command = {
     }
     if (!decodeSnowflake(id)) {
       throw new UserInputError(
-        `\`${id}\` doesn't look like a valid Discord ID/snowflake (should be 15-20 digits).`,
+        `\`${escapeInlineCode(id)}\` doesn't look like a valid Discord ID/snowflake (should be 15-20 digits).`,
         "snowflake <id>",
       );
     }

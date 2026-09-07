@@ -3,7 +3,9 @@ import * as chrono from "chrono-node";
 import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
+import { UserInputError } from "../../lib/errors.js";
 import { discordTimestamp, type TimestampStyle } from "../../lib/format.js";
+import { escapeInlineCode } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
 function buildResult(input: string, style: TimestampStyle) {
@@ -43,8 +45,10 @@ const command: Command = {
   prefixNames: ["timestamp", "ts"],
   async prefixExecute(message: Message, args: string[]) {
     if (args.length === 0) {
-      await message.reply(`Usage: \`${config.prefix}timestamp <time> [style]\` — e.g. \`${config.prefix}ts tomorrow 5pm\` or \`${config.prefix}ts dec 25 D\` (styles: t T d D f F R)`);
-      return;
+      throw new UserInputError(
+        `Describe a time in plain words — \`${config.prefix}ts tomorrow 5pm\` or \`${config.prefix}ts dec 25 D\` (styles: t T d D f F R).`,
+        "timestamp <time> [style]",
+      );
     }
 
     // Optional trailing style argument: a lone style letter after the time.
@@ -62,8 +66,13 @@ const command: Command = {
     const embed = buildResult(input, style);
 
     if (!embed) {
-      await message.reply(`Couldn't understand \`${input}\` as a time. Try something like \`tomorrow 5pm\`.`);
-      return;
+      // Raw input is interpolated — escape backticks so the inline
+      // code span can't be closed early (a smuggled mention would
+      // otherwise render OUTSIDE the span in this content reply).
+      throw new UserInputError(
+        `Couldn't understand \`${escapeInlineCode(input)}\` as a time — try something like \`tomorrow 5pm\`.`,
+        "timestamp <time> [style]",
+      );
     }
 
     await message.reply({ embeds: [embed] });

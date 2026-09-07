@@ -3,7 +3,7 @@ import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { eightBallService } from "../../services/eightball.js";
 import { UserInputError } from "../../lib/errors.js";
-import { safeBoldText } from "../../lib/validation.js";
+import { escapeInlineCode, safeBoldText } from "../../lib/validation.js";
 import { buildCollectionHandlers } from "../../lib/collection.js";
 import { log } from "../../core/logger.js";
 
@@ -104,7 +104,7 @@ const command: Command = {
     const handled = await handlers.dispatchManagement(message, first, restArgs);
     if (!handled) {
       // Unreachable (MANAGEMENT_SUBS pre-filtered), kept for safety.
-      throw new UserInputError(`I don't know an 8-ball subcommand called \`${first}\`.`, USAGE);
+      throw new UserInputError(`I don't know an 8-ball subcommand called \`${escapeInlineCode(first)}\`.`, USAGE);
     }
   },
 };

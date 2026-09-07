@@ -31,18 +31,16 @@ export const jokeRepository = {
   /** One random enabled joke, with its usage counter bumped. */
   randomWithUsage(): JokeRow | null {
     const database = getDb();
+    // Both statements ride the shared stmt() cache — the transaction
+    // wraps their EXECUTION, not their compilation (compiling once
+    // per process is safe: prepared statements are re-invoked inside
+    // transactions, and closeDb() invalidates the cache wholesale).
     const run = database.transaction(() => {
-      const row = database
-        .prepare(
-          `SELECT * FROM jokes WHERE enabled = 1 ORDER BY RANDOM() LIMIT 1`,
-        )
-        .get() as JokeRow | undefined;
+      const row = stmt(
+        `SELECT * FROM jokes WHERE enabled = 1 ORDER BY RANDOM() LIMIT 1`,
+      ).get() as JokeRow | undefined;
       if (row) {
-        database
-          .prepare(
-            `UPDATE jokes SET usage_count = usage_count + 1 WHERE id = ?`,
-          )
-          .run(row.id);
+        stmt(`UPDATE jokes SET usage_count = usage_count + 1 WHERE id = ?`).run(row.id);
       }
       return row ?? null;
     });
@@ -62,9 +60,7 @@ export const jokeRepository = {
   },
 
   list(limit = 25, offset = 0): JokeRow[] {
-    return getDb()
-      .prepare(`SELECT * FROM jokes ORDER BY id DESC LIMIT ? OFFSET ?`)
-      .all(limit, offset) as JokeRow[];
+    return stmt(`SELECT * FROM jokes ORDER BY id DESC LIMIT ? OFFSET ?`).all(limit, offset) as JokeRow[];
   },
 
   get(id: number): JokeRow | null {
@@ -80,20 +76,14 @@ export const jokeRepository = {
 
   edit(id: number, content: string): boolean {
     return (
-      getDb()
-        .prepare(
-          `UPDATE jokes SET content = ?, updated_at = datetime('now') WHERE id = ?`,
-        )
+      stmt(`UPDATE jokes SET content = ?, updated_at = datetime('now') WHERE id = ?`)
         .run(content, id).changes > 0
     );
   },
 
   setEnabled(id: number, enabled: boolean): boolean {
     return (
-      getDb()
-        .prepare(
-          `UPDATE jokes SET enabled = ?, updated_at = datetime('now') WHERE id = ?`,
-        )
+      stmt(`UPDATE jokes SET enabled = ?, updated_at = datetime('now') WHERE id = ?`)
         .run(enabled ? 1 : 0, id).changes > 0
     );
   },

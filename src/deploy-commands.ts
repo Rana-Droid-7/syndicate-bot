@@ -40,6 +40,21 @@ async function main() {
               `prefix-ONLY (the env prefix). Slash is reserved for moderation, admin, and developer commands.`,
           );
         }
+        // Surface/entrypoint parity with the runtime loader: a
+        // privileged command with a slash builder but a wrong surface
+        // or a missing execute() would DEPLOY successfully and then
+        // make the bot refuse to boot (or dispatch "doesn't run").
+        // Deploy-time must catch everything boot-time catches.
+        if (command.surface !== "slash-only") {
+          throw new Error(
+            `Refusing to deploy /${command.data.name} (${categoryDir.name}/${file}): category "${category}" commands must declare surface "slash-only" — the runtime loader enforces the same at boot.`,
+          );
+        }
+        if (typeof command.execute !== "function") {
+          throw new Error(
+            `Refusing to deploy /${command.data.name} (${categoryDir.name}/${file}): it has a slash builder but no execute() — it would register in Discord but never run.`,
+          );
+        }
         // Duplicate command names make Discord's bulk PUT fail with a
         // cryptic REST error AFTER the whole payload is sent — catch
         // it locally instead, with the offending files named.
@@ -68,6 +83,12 @@ async function main() {
       { body: commandData },
     );
     log.info("DEPLOY", `Registered to dev guild ${config.devGuildId}.`);
+    // Clear the GLOBAL registration too: switching an env from global
+    // to dev-guild mode previously left the old global commands live
+    // for up to an hour, replying "unknown command" to every use —
+    // a stale surface with no runtime behind it.
+    await rest.put(Routes.applicationCommands(config.clientId), { body: [] });
+    log.info("DEPLOY", "Cleared global registration (dev-guild mode — was possibly stale from an earlier global deploy).");
   } else {
     await rest.put(Routes.applicationCommands(config.clientId), { body: commandData });
     log.info("DEPLOY", "Registered globally (may take up to 1 hour to appear).");

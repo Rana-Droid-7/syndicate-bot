@@ -1,10 +1,13 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
-import { baseEmbed } from "../../lib/embeds.js";
+import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
 import { safeEvaluate } from "../../lib/safeMath.js";
 import { escapeCodeBlock } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
+
+/** The hard expression cap safeEvaluate enforces — surfaced here so over-length input is REJECTED, not silently truncated. */
+const MAX_EXPRESSION_LENGTH = 200;
 
 async function buildEmbed(expression: string) {
   const result = await safeEvaluate(expression);
@@ -40,7 +43,15 @@ const command: Command = {
       await message.reply(`Usage: \`${config.prefix}calc <expression>\` — e.g. \`${config.prefix}calc (3 + 4) * 2\``);
       return;
     }
-    const expression = args.join(" ").slice(0, 200);
+    const expression = args.join(" ");
+    // Reject over-length input instead of silently truncating it — a
+    // silently-truncated expression is a WRONG ANSWER with no hint
+    // that anything was cut off.
+    if (expression.length > MAX_EXPRESSION_LENGTH) {
+      log.info("PREFIX", `${config.prefix}calc rejected a ${expression.length}-char expression by ${message.author.id}`);
+      await message.reply({ embeds: [errorEmbed(`Keep expressions under ${MAX_EXPRESSION_LENGTH} characters — yours is ${expression.length}.`)] });
+      return;
+    }
     log.info("PREFIX", `${config.prefix}calc invoked by ${message.author.tag} (${message.author.id}): ${JSON.stringify(expression)}`);
     await message.reply({ embeds: [await buildEmbed(expression)] });
   },

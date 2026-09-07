@@ -56,6 +56,17 @@ export async function loadCommands(client: SyndicateClient): Promise<void> {
       const hasPrefix = typeof cmd.prefixExecute === "function";
       const hasData = !!cmd.data;
 
+      // Category must be one of the five known values — an out-of-enum
+      // category sails through the surface checks below and then
+      // crashes the help system's category lookup at runtime
+      // (CATEGORY_META[category].emoji -> undefined). Reject at load.
+      if (!PREFIX_ONLY_CATEGORIES.has(cmd.category) && !SLASH_ONLY_CATEGORIES.has(cmd.category)) {
+        throw new Error(
+          `Command in ${categoryDir.name}/${file} has unknown category "${cmd.category}" — ` +
+            `valid categories: utility, coolsies, moderation, admin, owner.`,
+        );
+      }
+
       // ---- surface policy (v0.5.4): strict two-lane split ----
       if (PREFIX_ONLY_CATEGORIES.has(cmd.category)) {
         if (hasSlash || hasData) {
@@ -76,7 +87,7 @@ export async function loadCommands(client: SyndicateClient): Promise<void> {
         );
       }
 
-        if (!cmd.usage || typeof cmd.usage !== "string" || cmd.usage.length === 0) {
+      if (!cmd.usage || typeof cmd.usage !== "string" || cmd.usage.length === 0) {
         throw new Error(`Command in ${categoryDir.name}/${file} is missing its "usage" metadata.`);
       }
       if (!cmd.description || typeof cmd.description !== "string" || cmd.description.length === 0) {
@@ -154,7 +165,18 @@ export async function loadCommands(client: SyndicateClient): Promise<void> {
         client.slashOnlyCommands.add(name);
       } else {
         const names = new Set<string>([name, ...(cmd.prefixNames ?? [])]);
+        // The dispatch lookups lowercase the user's input, so a
+        // mixed-case alias can never be typed reachably — reject it
+        // at load rather than shipping a dead alias. (The canonical
+        // name of a slash command is Discord's concern; djs enforces
+        // its own lowercase rule there.)
         for (const alias of names) {
+          if (alias !== alias.toLowerCase()) {
+            throw new Error(
+              `Prefix alias "${alias}" (command ${name}, ${categoryDir.name}/${file}) must be lowercase — ` +
+                `dispatch lowercases the input before lookup, so a mixed-case alias is unreachable.`,
+            );
+          }
           if (client.prefixCommands.has(alias)) {
             throw new Error(
               `Duplicate prefix alias "${alias}" (command ${name}, ${categoryDir.name}/${file}) — already registered. Load-time error by design.`,

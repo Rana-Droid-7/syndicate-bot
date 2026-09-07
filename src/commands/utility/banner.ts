@@ -3,7 +3,7 @@ import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
-import { mentionToId, isSnowflake } from "../../lib/validation.js";
+import { escapeInlineCode, mentionToId, isSnowflake } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
 async function replyWithBanner(
@@ -63,7 +63,7 @@ const command: Command = {
 
     const targetId = mentioned?.id ?? mentionToId(rawArg!);
     if (!isSnowflake(targetId)) {
-      throw new UserInputError(`\`${rawArg}\` doesn't look like a valid user mention or ID.`, "banner [@user]");
+      throw new UserInputError(`\`${escapeInlineCode(rawArg)}\` doesn't look like a valid user mention or ID.`, "banner [@user]");
     }
 
     log.info("PREFIX", `${config.prefix}banner invoked by ${message.author.tag} (${message.author.id}) for target ${targetId}`);

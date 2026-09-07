@@ -1,4 +1,5 @@
 import { warningRepository, MAX_WARNINGS_PER_USER, type WarningRow } from "../repositories/warnings.js";
+import { UserInputError } from "../lib/errors.js";
 import { log } from "../core/logger.js";
 import { truncate } from "../lib/validation.js";
 
@@ -18,7 +19,15 @@ const DESCRIPTION_LIMIT = 3800;
  */
 export const warningService = {
   add(guildId: string, userId: string, moderatorId: string, reason: string): number {
-    const count = warningRepository.add(guildId, userId, moderatorId, reason, Date.now());
+    // Shape the reason like every other stored field: the slash
+    // option's maxLength is UI-enforced only — a crafted direct API
+    // call with an empty/oversized reason would hit the DB CHECK and
+    // crash to a generic error instead of a clean taxonomy one.
+    const shaped = reason.trim().slice(0, 500);
+    if (!shaped) {
+      throw new UserInputError("Give the warning a reason — it can't be empty.", "/warn add <user> reason: <why>");
+    }
+    const count = warningRepository.add(guildId, userId, moderatorId, shaped, Date.now());
     log.info("WARN", `Added warning for ${userId} in guild ${guildId} by ${moderatorId}. Total: ${count}.`);
     if (count >= MAX_WARNINGS_PER_USER) {
       log.warn("WARN", `User ${userId} in guild ${guildId} reached the ${MAX_WARNINGS_PER_USER}-warning cap — oldest rolled off.`);

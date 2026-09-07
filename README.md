@@ -1,13 +1,17 @@
-# Syndicate Bot — v1.0.1
+# Syndicate Bot — v1.1.1
 
 A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
 moderation, admin, and developer tiers — built with discord.js +
 TypeScript on a real SQL database.
 
-**v1.0.1 — the release the audits earned.** Six betas, five internal
-audit cycles, then **four more adversarial post-1.0 cycles** (each
-re-auditing the previous cycle's fixes) — every confirmed finding
-fixed and pinned by a regression check that runs in CI. The command
+**v1.1.0 — `>poll` goes native.** The makeshift button-poll is gone:
+`>poll` now posts a real **native Discord poll** — Discord's own
+voting UI, live tallies, and automatic finalization — while keeping
+every input guarantee (sanitization, post-sanitize limits, clean
+taxonomy errors). Built on the v1.0.1 audit-hardened base: six betas,
+five internal audit cycles, then **four more adversarial post-1.0
+cycles** — every confirmed finding fixed and pinned by a regression
+check that runs in CI. The command
 reference below is the whole story — everything public on the prefix,
 moderation/admin/developer tools on native slash.
 
@@ -88,7 +92,7 @@ prefix input gets a **starts-with lookup** (`>se` → serverinfo,
 setnick, userinfo...) or a **typo suggestion** (`>halp` → "did you
 mean **>help**?").
 
-## Commands (v1.0.1)
+## Commands (v1.1.1)
 
 ### 🛠️ Utility — prefix only, open to everyone
 `help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `poll`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` (aliases: `calc`, `math`; `whois`, `ui`; `av`, `pfp`; `ts`, and more).
@@ -117,6 +121,7 @@ SQL; services own business logic; commands only coordinate.
 | Guilds / users (structural) | `guilds`, `users` | FK parents for cascade cleanup; not user-facing rows |
 | AFK status | `afk` | per-guild, auto-cleared by activity or `>afk off` |
 | Reminders | `reminders` | restored on every startup; a 60s sweep catches strays |
+| Open polls (recap promise) | `polls` | ended + recapped on schedule; restored on every startup; a 60s sweep catches strays |
 | Warnings | `warnings` | soft-capped at 25 active per user (oldest roll off, transactionally) |
 | Suggestions | `suggestions` | SQL + human-readable `data/suggestions.txt` export |
 | Jokes | `jokes` | enable/disable, usage counts, developer-attributed |
@@ -134,10 +139,12 @@ src/
                 safeMath, safeTimeout, safeError, suggest, help, format, invite,
                 devlog, collection (shared joke/8ball management), shutdown,
                 restartHook (in-process /boot Reboot), cooldownCountdown (live
-                cooldown timers), singleInstanceLock (double-boot guard)
-  services/     afk, reminders, warnings, suggestions, jokes, eightball (business logic)
-  repositories/ afk, reminders, warnings, suggestions, jokes, eightball, guilds,
-                shared (SQL only)
+                cooldown timers), singleInstanceLock (double-boot guard),
+                rateLimit (shared 429 detection)
+  services/     afk, reminders, warnings, suggestions, jokes, eightball,
+                polls (open-poll recap lifecycle) (business logic)
+  repositories/ afk, reminders, warnings, suggestions, jokes, eightball, polls,
+                guilds, shared (SQL only)
   database/     client (WAL, migrations, integrity check)
   workers/      mathWorker (isolated /calculate thread)
   types/        the Command contract
@@ -154,25 +161,26 @@ else touches SQL.
 - **Moderation** = shared `canModerate` hierarchy (no self/bot/owner/equal-or-higher targeting; bot role positioned high enough), re-verified *after* confirmation dialogs, not just before.
 - **Every confirmation dialog** collects only the invoker's click, at most once (max:1 + settled guard).
 - **`/calculate`** runs in an isolated worker thread with a 3-second kill timer + blocklist — the DoS vector was real and is dead.
-- **All user text** passes sanitization (mass-mention breaking, invisible-character stripping, line-separator stripping, markdown-safe escaping) before any embed is built — including poll questions, options, and button labels. Empty-after-sanitize text is rejected, never stored.
+- **`>poll`** posts a **native Discord poll** — Discord's own voting UI and live tallies — with a decimal-hour duration (`0.5` = 30 minutes, floor `0.01` = 36 seconds) ended through Discord's official end-poll feature, then a final-tally recap (winner, counts, percentages, ties) replied after close. The recap is persistent like reminders: rows restored on every boot, a 60s sweep catches strays, rate limits retry instead of failing. No bot-side vote tracking to drift or race.
+- **All user text** passes sanitization (mass-mention breaking, invisible-character stripping, line-separator stripping, markdown-safe escaping) before any embed is built — including poll questions and options. Empty-after-sanitize text is rejected, never stored.
 - **Number inputs** are strictly decimal — hex (`0x10`), scientific (`1e3`), and underscore (`1_0`) forms are rejected.
 - **Reminders** cap at 25 pending per user per guild; rate-limited deliveries retry instead of failing permanently.
 
 ## Development
 
 - `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine, regression pins)
-- `npm run verify` — everything: strict typecheck, build, **40** unit tests, and **six** verification harnesses (**165** integration/attack + **76** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
+- `npm run verify` — everything: strict typecheck, build, **54** unit tests, and **six** verification harnesses (**188** integration/attack + **88** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
 - [CHANGELOG.md](CHANGELOG.md) — every release's full history; `changelog` in-chat shows the recent highlights
 - `verify_timer.mjs` — chained-timer regression (the >24.8-day setTimeout bug)
 - `verify_lookup.mjs` — prefix lookup/suggestion scenarios
 - `verify-dispatcher.mjs` — prefix dispatch edge-case torture
 - `verify-integration.mjs` — full command + attack harness against a throwaway database
-- `verify-embeds.mjs` — renders every embed the bot can produce and validates each against Discord's hard limits (6000/4096/1024/256/25)
+- `verify-embeds.mjs` — renders every embed the bot can produce and validates each against Discord's hard limits (6000/4096/1024/256/25), plus the native `>poll` payload against Discord's poll limits (300/10×55/768h)
 - `verify-docs.mjs` — every claim the docs make about the codebase (versions, counts, file trees, table lists) derived from live state — docs can't silently lie in CI
 - Load-time errors are intentional: a duplicate command name or missing metadata refuses to boot the bot instead of silently dropping it.
 - Error taxonomy: every failure is one typed class, rendered by one shared dispatcher path — input mistakes never consume the cooldown (`cooldowns.refund()`).
 - Cooldown hits render as a LIVE countdown via Discord's own dynamic timestamp (`try again in <t:R>`), flipping to a "you can use this command again" edit at expiry — both dispatch lanes.
-- Mention gating (official `allowedMentions`): every surface that echoes or delivers user text (AFK notices, suggestions, reminders, announcements) can ping only the intended user — never arbitrary `<@id>` mentions smuggled through content.
+- Mention gating (official `allowedMentions`): every surface that echoes or delivers user text (AFK notices, suggestions, reminders, poll recaps, announcements) can ping only the intended user — never arbitrary `<@id>` mentions smuggled through content.
 
 ## Project files
 

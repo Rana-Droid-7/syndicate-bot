@@ -15,6 +15,27 @@ interface ReleaseNotes {
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
   {
+    version: "1.1.1",
+    date: "2026-09-07",
+    highlights: [
+      "**Cycle I audit** — a full-repo adversarial pass; every behavioral finding fixed and pinned in CI",
+      "**Soft-restart races dead**: repeated Reboots no longer leak live clients; reminder/poll timers survive restart windows instead of terminally failing",
+      "**The `>ts` ping vector closed** — hostile input can no longer break out of error text into a real mention; ~15 error surfaces escape-locked",
+      "**Terminal data is retained, not hoarded** — 30-day purge for delivered reminders, closed polls, inactive warnings",
+      "Prefix-lane crashes devlog now; event files refuse to boot instead of silently skipping; deploy-time validation matches boot-time",
+    ],
+  },
+  {
+    version: "1.1.0",
+    date: "2026-09-07",
+    highlights: [
+      "**`>poll` is native now** — a real Discord poll: native voting, live tallies, and decimal-hour durations (0.5 = 30 minutes, 0.01 = 36 seconds)",
+      "**Automatic results recap** — when the duration ends, the poll is ended via Discord's official end-poll feature and the final tally (winner, counts, percentages, ties) is posted as a reply",
+      "Recaps are persistent like reminders: they survive restarts; rate limits retry; deleted polls go clean",
+      "New grammar: poll <hours> \"<question>\" \"<option 1>\", \"<option 2>\" — duration first, comma-separated options",
+    ],
+  },
+  {
     version: "1.0.1",
     date: "2026-09-05",
     highlights: [

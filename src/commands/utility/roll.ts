@@ -3,6 +3,7 @@ import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
+import { escapeInlineCode } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
 const DICE_REGEX = /^(\d{1,2})d(\d{1,4})([+-]\d{1,3})?$/i;
@@ -38,7 +39,7 @@ function buildEmbed(result: NonNullable<ReturnType<typeof rollDice>>) {
 }
 
 const INVALID_NOTATION_MESSAGE = (notation: string) =>
-  `Invalid dice notation \`${notation}\`. Use something like \`2d6\`, \`1d20+5\`, or \`4d8-2\` (max ${MAX_DICE} dice, 2-9999 sides).`;
+  `Invalid dice notation \`${escapeInlineCode(notation)}\`. Use something like \`2d6\`, \`1d20+5\`, or \`4d8-2\` (max ${MAX_DICE} dice, 2-9999 sides).`;
 
 const command: Command = {
   category: "utility",

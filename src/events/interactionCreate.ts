@@ -8,7 +8,7 @@ import { cooldowns } from "../lib/cooldowns.js";
 import { mapErrorToReply } from "../lib/errors.js";
 import { ContextError, UserInputError, PermissionError } from "../lib/errors.js";
 import { CooldownError } from "../lib/errors.js";
-import { cooldownCountdownEmbed } from "../lib/cooldownCountdown.js";
+import { cooldownCountdownEmbed, startCooldownCountdown } from "../lib/cooldownCountdown.js";
 import { errorDetail } from "../lib/safeError.js";
 import { log } from "../core/logger.js";
 
@@ -26,7 +26,7 @@ const event: BotEvent<"interactionCreate"> = {
 
     // Unknown command — stale registration or renamed/removed command.
     if (!command) {
-      log.warn("EVENT", `Unknown command received: ${commandInteraction.commandName}`);
+      log.warn("CMD", `Unknown command received: ${commandInteraction.commandName}`);
       await commandInteraction
         .reply({
           embeds: [
@@ -36,7 +36,7 @@ const event: BotEvent<"interactionCreate"> = {
           ],
           flags: MessageFlags.Ephemeral,
         })
-        .catch((err) => log.error("EVENT", "Failed to reply about unknown command", err));
+        .catch((err) => log.error("CMD", "Failed to reply about unknown command", err));
       return;
     }
 
@@ -71,7 +71,16 @@ const event: BotEvent<"interactionCreate"> = {
         const label = `/${commandInteraction.commandName}`;
         const remainingMs = cooldowns.getRemaining(commandInteraction.guildId, commandInteraction.user.id, commandInteraction.commandName);
         await commandInteraction
-          .reply({ embeds: [cooldownCountdownEmbed(label, remainingMs)], flags: MessageFlags.Ephemeral })
+          .reply({ embeds: [cooldownCountdownEmbed(label, remainingMs)], flags: MessageFlags.Ephemeral, fetchReply: true })
+          .then((sent) => {
+            // Same ready-flip as the prefix lane: exactly ONE edit at
+            // expiry flips the countdown to "you can use this again".
+            startCooldownCountdown(
+              { edit: (payload) => sent.edit(payload as { embeds: [] }) },
+              label,
+              remainingMs,
+            );
+          })
           .catch((err) => log.error("CMD", "Failed to send slash cooldown countdown", err));
         return;
       }

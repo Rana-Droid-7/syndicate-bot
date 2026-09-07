@@ -60,4 +60,17 @@ export const reminderRepository = {
   markFailed(id: number): void {
     stmt(`UPDATE reminders SET status = 'failed', delivered_at = datetime('now') WHERE id = ?`).run(id);
   },
+
+  /**
+   * Retention: terminal reminders (delivered/failed) older than the
+   * retention window. The rows served their purpose — the promise is
+   * kept either way — and without a purge every reminder ever sent
+   * accumulates forever (and keeps its author referenced in `users`,
+   * blocking the orphan prune). 30 days is far past any useful
+   * inspection window.
+   */
+  purgeTerminal(olderThanUnixMs: number): number {
+    return stmt(`DELETE FROM reminders WHERE status IN ('delivered', 'failed') AND due_unix_ms < ?`)
+      .run(olderThanUnixMs).changes;
+  },
 };

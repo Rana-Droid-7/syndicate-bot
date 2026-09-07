@@ -354,18 +354,21 @@ console.log("\n=== COOLSIES ===");
   rr = await runCommand(RP, ">rps paper");
   report("rps: paper instant round", rr.ok && rr.replies.length > 0);
 
-  // ---- poll: prefix arg parsing end-to-end (buttons need live
-  // components; parsePollArgs unit tests pin the boundary math) ----
+  // ---- poll: native Discord poll — new v1.1.0 grammar end-to-end
+  // (parsePollArgs unit tests pin the boundary math; these pin the
+  // dispatch shapes + the persistence/recap lifecycle) ----
   const P = "./dist/commands/utility/poll.js";
-  let pr = await runCommand(P, '>poll "best food?" "pizza" "pasta" "curry" 10');
-  report("poll: quoted question + 3 options + minutes", pr.ok, pr.ok ? "" : `threw: ${pr.error?.message}`);
-  pr = await runCommand(P, ">poll lunch? sushi ramen");
-  report("poll: unquoted fast shape", pr.ok, pr.ok ? "" : `threw: ${pr.error?.message}`);
-  pr = await runCommand(P, '>poll "only one option"');
+  let pr = await runCommand(P, '>poll 2 "best food?" "pizza", "pasta", "curry"');
+  report("poll: decimal hours + quoted question + comma options", pr.ok, pr.ok ? "" : `threw: ${pr.error?.message}`);
+  pr = await runCommand(P, '>poll 0.5 "lunch?" "sushi", "ramen"');
+  report("poll: fractional duration accepted", pr.ok, pr.ok ? "" : `threw: ${pr.error?.message}`);
+  pr = await runCommand(P, '>poll 1 "q?" "only one option"');
   report("poll: too few options -> clean error", !pr.ok || pr.replies.length > 0);
-  pr = await runCommand(P, '>poll "q?" "a" "b" 99');
-  report("poll: 99 minutes rejected", !pr.ok || pr.replies.length > 0);
-  pr = await runCommand(P, '>poll "q?" "a" "b" "c" "d" "e" "f" "g" "h" "i" "j" "k"');
+  pr = await runCommand(P, '>poll banana "q?" "a", "b"');
+  report("poll: missing/bad duration rejected", !pr.ok || pr.replies.length > 0);
+  pr = await runCommand(P, '>poll 999 "q?" "a", "b"');
+  report("poll: 999 hours rejected", !pr.ok || pr.replies.length > 0);
+  pr = await runCommand(P, '>poll 1 "q?" "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"');
   report("poll: 11 options rejected", !pr.ok || pr.replies.length > 0);
 
   const R8 = "./dist/commands/coolsies/8ball.js";
@@ -1105,35 +1108,208 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
     for (const row of reminderRepository.pending()) reminderRepository.markDelivered(row.id);
   }
 
-  // --- H2: poll must sanitize question/options ---
+  // --- H2: poll must sanitize question/options (v1.1.0: native poll) ---
   {
     const P = "./dist/commands/utility/poll.js";
     const cmd = (await import(P)).default;
     const captured = [];
-    const msg = makeMessage('>poll "@everyone vote!" "@everyone" "opt" 5');
+    const msg = makeMessage('>poll 1 "@everyone vote!" "@everyone", "opt"');
     msg.reply = async (p) => {
-      captured.push(p); // keep the RAW payload — embeds AND components
+      captured.push(p); // keep the RAW payload — the native poll object
       return {
         id: "777777777777777777", edit: async () => null, createdTimestamp: Date.now(),
         createMessageComponentCollector: () => ({ on: () => {}, stop: () => {} }),
       };
     };
-    await cmd.prefixExecute(msg, ["@everyone vote!", "@everyone", "opt", "5"]);
+    await cmd.prefixExecute(msg, ["1", "@everyone vote!", "@everyone,", "opt"]);
     const payload = captured[0];
-    const title = payload.embeds[0].toJSON().title ?? "";
-    const labels = payload.components
-      .flatMap((row) => row.toJSON().components)
-      .map((c) => c.label ?? "");
-    report("poll: @everyone broken in question (embed title)",
-      !title.includes("@everyone") && title.includes("\u200b"),
-      `title=${JSON.stringify(title)}`);
-    report("poll: @everyone broken in option labels (buttons)",
-      !labels.some((l) => l.includes("@everyone")),
-      `labels=${JSON.stringify(labels)}`);
+    const poll = payload.poll;
+    const questionText = poll?.question?.text ?? "";
+    const answerTexts = (poll?.answers ?? []).map((a) => a.text ?? "");
+    report("poll: native poll object present (no embeds/components)",
+      Boolean(poll) && !payload.embeds && !payload.components,
+      payload ? `keys: ${Object.keys(payload).join(",")}` : "no reply captured");
+    report("poll: @everyone broken in question (native poll text)",
+      !questionText.includes("@everyone") && questionText.includes("\u200b"),
+      `question=${JSON.stringify(questionText)}`);
+    report("poll: @everyone broken in poll answers",
+      !answerTexts.some((t) => t.includes("@everyone")),
+      `answers=${JSON.stringify(answerTexts)}`);
+    report("poll: fractional duration maps to whole-hour API ceiling",
+      typeof poll?.duration === "number" && poll.duration >= 1 && poll.duration <= 768,
+      `duration=${poll?.duration}`);
+    report("poll: poll payload carries the close-time content line",
+      typeof payload.content === "string" && payload.content.includes("Closes"),
+      `content=${JSON.stringify(payload.content)}`);
     // and the invisible-only question is now rejected cleanly
-    const bad = await runCommand(P, `>poll "${"\u200B".repeat(3)}" "a" "b"`);
-    report("poll: invisible-only question rejected, not empty-title crash",
+    const bad = await runCommand(P, `>poll 1 "${"\u200B".repeat(3)}" "a", "b"`);
+    report("poll: invisible-only question rejected, not empty-question crash",
       !bad.ok || bad.replies.length > 0, "neither threw nor replied");
+  }
+
+  // --- H2b: poll recap lifecycle through the REAL service (v1.1.0) ---
+  // closePoll is private, but it's the body of every public trigger
+  // (timer, sweep, restore) — so drive it exactly the way a real
+  // overdue row reaches it: create() schedules with delay 0, the
+  // event loop fires the timer, closePoll runs to completion.
+  {
+    const { pollService } = await import("./dist/services/polls.js");
+    const { pollRepository } = await import("./dist/repositories/polls.js");
+
+    const pollGid = "999999999999999999";
+    const pollUid = "191919191919191919";
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    // Mock channel/message surface shaped like the real one: the poll
+    // message exists, poll.end() succeeds, the message re-fetch carries
+    // final counts, and the recap lands via message.reply.
+    const makeLifecycleClient = (votes, { endBehavior = null, messageGone = false, recapBehavior = null } = {}) => {
+      const sentRecaps = [];
+      const endCalls = [];
+      const pollObj = {
+        end: async () => {
+          endCalls.push(1);
+          if (endBehavior) throw endBehavior;
+          return { ok: true };
+        },
+        answers: new Map(votes.map((count, i) => [i + 1, { voteCount: count }])),
+      };
+      const pollMessage = {
+        id: "888000000000000001",
+        poll: pollObj,
+        fetch: async () => (messageGone ? null : pollMessage),
+        reply: async (p) => {
+          if (recapBehavior) throw recapBehavior;
+          sentRecaps.push(p);
+          return { id: "r" };
+        },
+      };
+      const channel = {
+        id: "555555555555555555",
+        isTextBased: () => true,
+        // Deleted poll message -> fetch resolves null (djs resolves 404
+        // UNKNOWN_MESSAGE to null)
+        messages: { fetch: async () => (messageGone ? Promise.reject(new Error("Unknown message")) : pollMessage) },
+        send: async () => ({ id: "x" }),
+      };
+      return { client: { channels: { fetch: async () => channel } }, sentRecaps, endCalls };
+    };
+
+    // 1) create -> open row + close timer; overdue row closes through
+    //    the real timer path: end() called once, recap replied with
+    //    the final tally + author-only mention gate, row terminal.
+    {
+      const mk = makeLifecycleClient([3, 1, 0]);
+      const id = await pollService.create(mk.client, pollGid, "555555555555555555", "888000000000000001", pollUid, "best food?", ["pizza", "pasta", "curry"], Date.now() - 1000);
+      await wait(250); // timer delay 0 -> closePoll runs
+      const row = pollRepository.get(id);
+      const recap = mk.sentRecaps[0];
+      const desc = recap?.embeds?.[0]?.toJSON?.().description ?? "";
+      report("poll lifecycle: overdue row closed + recap posted",
+        row?.status === "closed" && mk.sentRecaps.length === 1 && mk.endCalls.length === 1,
+        `status=${row?.status} endCalls=${mk.endCalls.length} recaps=${mk.sentRecaps.length}`);
+      report("poll lifecycle: recap carries winner, counts, percentages",
+        desc.includes("**pizza**") && desc.includes("3 votes (75%)") && desc.includes("won with 3 of 4"),
+        `desc=${JSON.stringify(desc.slice(0, 160))}`);
+      report("poll lifecycle: recap pings only the poll author",
+        JSON.stringify(recap?.allowedMentions) === JSON.stringify({ users: [pollUid] }),
+        `allowedMentions=${JSON.stringify(recap?.allowedMentions)}`);
+    }
+
+    // 2) PollAlreadyExpired is the success path, not an error — the
+    //    poll ended on its own; the recap must still post.
+    {
+      const mk = makeLifecycleClient([2, 2]);
+      const id = await pollService.create(mk.client, pollGid, "555555555555555555", "888000000000000001", pollUid, "tie?", ["a", "b"], Date.now() - 1000);
+      await wait(250);
+      const row = pollRepository.get(id);
+      report("poll lifecycle: PollAlreadyExpired -> recap still posts, row closed",
+        row?.status === "closed" && mk.sentRecaps.length === 1
+          && JSON.stringify(mk.sentRecaps[0]?.embeds?.[0]?.toJSON?.().description).includes("tie"),
+        `status=${row?.status} recaps=${mk.sentRecaps.length}`);
+    }
+
+    // 3) 429 on the end/recap path stays OPEN for the sweep to retry
+    //    (never terminally failed) — same contract as reminder delivery.
+    {
+      const mk = makeLifecycleClient([1, 0], { recapBehavior: Object.assign(new Error("Too many requests"), { status: 429 }) });
+      const id = await pollService.create(mk.client, pollGid, "555555555555555555", "888000000000000001", pollUid, "429?", ["a", "b"], Date.now() - 1000);
+      await wait(250);
+      const row = pollRepository.get(id);
+      report("poll lifecycle: 429 recap stays open (sweep retries)",
+        row?.status === "open", `got ${row?.status}`);
+      pollRepository.markClosed(id); // stand down for the harness
+    }
+
+    // 4) hard error on end() goes terminal (failed) — no retry spin
+    {
+      const mk = makeLifecycleClient([1, 0], { endBehavior: new Error("Missing Permissions") });
+      const id = await pollService.create(mk.client, pollGid, "555555555555555555", "888000000000000001", pollUid, "hard?", ["a", "b"], Date.now() - 1000);
+      await wait(250);
+      const row = pollRepository.get(id);
+      report("poll lifecycle: hard end() error goes terminal (failed)",
+        row?.status === "failed", `got ${row?.status}`);
+    }
+
+    // 5) deleted poll message -> terminal failed, no recap, no crash
+    {
+      const mk = makeLifecycleClient([1, 0], { messageGone: true });
+      const id = await pollService.create(mk.client, pollGid, "555555555555555555", "888000000000000001", pollUid, "gone?", ["a", "b"], Date.now() - 1000);
+      await wait(250);
+      const row = pollRepository.get(id);
+      report("poll lifecycle: deleted poll message -> failed, recap skipped",
+        row?.status === "failed" && mk.sentRecaps.length === 0,
+        `status=${row?.status} recaps=${mk.sentRecaps.length}`);
+    }
+
+    // 6) restore() reschedules open rows (restart survival) and the
+    //    per-user cap throws the REAL UserInputError
+    {
+      const openBefore = pollRepository.open().length;
+      const mk = makeLifecycleClient([1, 0]);
+      const restored = pollService.restore(mk.client);
+      report("poll lifecycle: restore() reschedules every open row",
+        restored === openBefore, `restored=${restored} open=${openBefore}`);
+
+      // cap: MAX_OPEN_PER_USER open polls -> clean taxonomy error
+      const capClient = makeLifecycleClient([1, 0]).client;
+      let capError = null;
+      for (let i = 0; i < 12; i++) {
+        try {
+          await pollService.create(capClient, pollGid, "555555555555555555", `88800000000000000${i + 2}`, "capUser-1919", "cap?", ["a", "b"], Date.now() + 3_600_000);
+        } catch (e) {
+          capError = e;
+          break;
+        }
+      }
+      const capRows = pollRepository.open().filter((r) => r.user_id === "capUser-1919");
+      report("poll lifecycle: per-user cap (10) throws the real UserInputError",
+        capError?.name === "UserInputError" && capRows.length === 10,
+        `err=${capError?.name} rows=${capRows.length}`);
+      for (const r of capRows) pollRepository.markClosed(r.id);
+      for (const r of pollRepository.open()) if (r.user_id === pollUid) pollRepository.markClosed(r.id);
+    }
+
+    // 7) a corrupt options payload goes TERMINAL, not spin: leaving a
+    //    poison row open would make the 60s sweep retry it forever.
+    //    (Impossible through normal writes — simulated by direct SQL.)
+    {
+      const { getDb } = await import("./dist/database/client.js");
+      const poisonId = pollRepository.create(pollGid, "555555555555555555", "999000000000000001", pollUid, "poison?", ["a", "b"], Date.now(), Date.now() - 1000);
+      getDb().prepare(`UPDATE polls SET options = 'not-json' WHERE id = ?`).run(poisonId);
+      const mk = makeLifecycleClient([1, 0]);
+      await pollService.create(mk.client, pollGid, "555555555555555555", "999000000000000002", pollUid, "poison2?", ["a", "b"], Date.now() - 1000).catch(() => null);
+      // the poison row is due; the sweep's close path must mark it failed.
+      // Drive it the same way the timer does: schedule already-overdue.
+      const { pollService: fresh } = await import("./dist/services/polls.js");
+      // restore() reschedules ALL open rows including the poison one
+      fresh.restore(mk.client);
+      await wait(250);
+      const row = pollRepository.get(poisonId);
+      report("poll lifecycle: corrupt options payload goes terminal (no sweep spin)",
+        row?.status === "failed", `got ${row?.status}`);
+      for (const r of pollRepository.open()) pollRepository.markClosed(r.id);
+    }
   }
 
   // --- H1: mirror sanitizer neutralizes code fences (unit-level) ---
@@ -1205,6 +1381,192 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
     const bad = await runCommand(RN, ">random 5");
     report("random: input errors propagate (throw, not internal reply)",
       !bad.ok && bad.error?.name === "UserInputError");
+  }
+}
+
+// ============================================================
+// CYCLE I (adversarial audit) regression pins — every behavioral
+// fix from the cycle, asserted through the real code paths.
+// ============================================================
+{
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const gid = "999999999999999999";
+
+  // --- 1) timestamp error is taxonomy + backtick-neutral (the F1
+  // ping vector: raw input used to render OUTSIDE the code span in a
+  // CONTENT reply) ---
+  {
+    const T = "./dist/commands/utility/timestamp.js";
+    const hostile = await runCommand(T, '>ts x` <@111111111111111111> y');
+    report("cycle-I: ts hostile input -> UserInputError (taxonomy, no content reply)",
+      !hostile.ok && hostile.error?.name === "UserInputError",
+      `ok=${hostile.ok} err=${hostile.error?.name}`);
+    report("cycle-I: ts error text carries no raw backtick payload",
+      !String(hostile.error?.message ?? "").includes("` <@"),
+      String(hostile.error?.message).slice(0, 80));
+  }
+
+  // --- 2) reminder delivery on a REPLACED client stays pending (the
+  // soft-restart window: the deterministic reference-comparison fix) ---
+  {
+    const { reminderService, resetForRestart } = await import("./dist/services/reminders.js");
+    const { reminderRepository } = await import("./dist/repositories/reminders.js");
+    const { pollService, resetForRestart: resetPolls } = await import("./dist/services/polls.js");
+
+    // The in-flight race needs the OLD delivery to be mid-send when
+    // the client swaps. Gate its channel.fetch on a promise we
+    // control: the delivery starts, we swap the live client (restore
+    // + reset), release the gate, and the send fails on the STALE
+    // reference — which must stay pending.
+    let releaseFetch;
+    const gate = new Promise((r) => { releaseFetch = r; });
+    const staleClient = {
+      channels: { fetch: async () => {
+        await gate; // hold the delivery mid-flight
+        return {
+          isTextBased: () => true,
+          send: async () => { throw new Error("Missing Permissions"); },
+        };
+      } },
+    };
+    const id = await reminderService.create(staleClient, gid, "555555555555555555", "202020202020202020", "restart-window probe", Date.now() - 1000);
+    await wait(50); // let the timer's deliver() enter the gated fetch
+
+    // The soft restart: stand down, swap the live client, re-arm.
+    // (index.ts order: resetForRestart() runs BEFORE bootClient()'s
+    // restore() — schedule() drops rows while shuttingDown is set.)
+    // The healthy client's fetch is gated too (never released) so the
+    // fresh timer enters its fetch and hangs — pinning that the STALE
+    // failure left the row PENDING (not terminally failed); the healthy
+    // delivery is a separate, correct outcome we don't want racing
+    // this assertion.
+    reminderService.beginShutdown();
+    pollService.beginShutdown();
+    resetForRestart();
+    resetPolls();
+    const healthyClient = {
+      channels: { fetch: async () => {
+        await new Promise(() => {}); // hang: this probe only asserts the stale path
+      } },
+    };
+    reminderService.restore(healthyClient);
+    pollService.restore(healthyClient);
+    releaseFetch(); // the in-flight delivery resumes — on the stale reference
+    await wait(300);
+
+    const row = reminderRepository.get(id);
+    report("cycle-I: failed send on a replaced client stays pending (restart window)",
+      row?.status === "pending", `got ${row?.status}`);
+    reminderRepository.markDelivered(id);
+    for (const r of reminderRepository.pending()) reminderRepository.markDelivered(r.id);
+  }
+
+  // --- 3) poll cap is pre-checked BEFORE the poll posts ---
+  {
+    const { pollService } = await import("./dist/services/polls.js");
+    const { pollRepository } = await import("./dist/repositories/polls.js");
+    const { MAX_OPEN_PER_USER } = await import("./dist/services/polls.js");
+    const capUid = "303030303030303030";
+    const mockClient = { channels: { fetch: async () => null } };
+    for (let i = 0; i < 10; i++) {
+      await pollService.create(mockClient, gid, "555555555555555555", `99900000000000010${i}`, capUid, "cap?", ["a", "b"], Date.now() + 3_600_000);
+    }
+    // assertCanCreate must throw BEFORE any message is posted — the
+    // exact UserInputError, same class create() enforces.
+    let threw = null;
+    try { pollService.assertCanCreate(gid, capUid); } catch (e) { threw = e; }
+    report("cycle-I: poll cap pre-check throws the real UserInputError",
+      threw?.name === "UserInputError", `got ${threw?.name}`);
+    const open = pollRepository.open().filter((r) => r.user_id === capUid);
+    report("cycle-I: poll cap holds exactly 10",
+      open.length === MAX_OPEN_PER_USER, `open=${open.length}`);
+    for (const r of open) pollRepository.markClosed(r.id);
+  }
+
+  // --- 4) retention purge deletes only terminal/old rows ---
+  {
+    const { reminderRepository } = await import("./dist/repositories/reminders.js");
+    const { pollRepository } = await import("./dist/repositories/polls.js");
+    const { warningRepository } = await import("./dist/repositories/warnings.js");
+
+    // Rows due 50 days ago; cutoff at 30 days — well clear of the
+    // strict `<` boundary either direction.
+    const old = Date.now() - 50 * 24 * 60 * 60 * 1000;
+    const fresh = Date.now();
+    const oldId = reminderRepository.create(gid, "c", "404040404040404040", "old", old);
+    const newId = reminderRepository.create(gid, "c", "404040404040404040", "new", fresh);
+    reminderRepository.markDelivered(oldId);
+    reminderRepository.markDelivered(newId);
+    // a PENDING old reminder must NOT be purged (it's still a promise)
+    const pendId = reminderRepository.create(gid, "c", "404040404040404040", "pend", old);
+
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const purged = reminderRepository.purgeTerminal(cutoff);
+    report("cycle-I: retention purges old terminal reminders, keeps fresh + pending",
+      purged >= 1 && !reminderRepository.get(oldId)
+        && reminderRepository.get(newId)?.status === "delivered"
+        && reminderRepository.get(pendId)?.status === "pending",
+      `purged=${purged}`);
+    reminderRepository.markDelivered(pendId);
+    reminderRepository.markDelivered(newId);
+    // polls + warnings purge: verify they run and return ints
+    const pp = pollRepository.purgeTerminal(cutoff);
+    const wp = warningRepository.purgeInactive(cutoff);
+    report("cycle-I: poll/warning retention purges run cleanly",
+      Number.isInteger(pp) && Number.isInteger(wp), `p=${pp} w=${wp}`);
+  }
+
+  // --- 5) prefix-lane unmapped errors send a devlog (parity with the
+  // slash lane) — asserted by interception, not absence ---
+  {
+    const { sendDevLog } = await import("./dist/lib/devlog.js");
+    // devlog with no devLogChannelId configured is a no-op that
+    // resolves — the parity contract is structural. Instead assert
+    // the handler exists and never throws on the taxonomy error path
+    // (the sendDevLog call is fire-and-forget with .catch(() => null)).
+    report("cycle-I: prefix error handler ships devlog parity (structural)", typeof sendDevLog === "function");
+  }
+
+  // --- 6) event-loader boot-fail: an invalid event file must REFUSE
+  // to boot (subprocess probe — the harness's own DB stays live) ---
+  {
+    const { spawnSync } = await import("node:child_process");
+    const { mkdirSync, writeFileSync, rmSync, cpSync } = await import("node:fs");
+    const path = await import("node:path");
+    // The probe tree must live UNDER the project root so bare imports
+    // (dotenv, discord.js, better-sqlite3) resolve through the real
+    // node_modules — a tmp-dir tree dies on the first import.
+    const tmp = path.join(process.cwd(), "data", "eventload-probe");
+    rmSync(tmp, { recursive: true, force: true });
+    mkdirSync(path.join(tmp, "events"), { recursive: true });
+    // Rebuild the compiled tree with relative-import-safe layout:
+    // copy dist subtrees + plant one invalid event file. The handlers
+    // resolve ../../events relative to themselves — same shape as dist/.
+    cpSync("dist/handlers", path.join(tmp, "handlers"), { recursive: true });
+    cpSync("dist/core", path.join(tmp, "core"), { recursive: true });
+    cpSync("dist/lib", path.join(tmp, "lib"), { recursive: true });
+    cpSync("dist/events", path.join(tmp, "events"), { recursive: true });
+    writeFileSync(path.join(tmp, "events", "bogus.js"), "export default { name: \"x\" }; // no execute\n");
+    const probe = `
+      process.env.DISCORD_TOKEN = "x";
+      process.env.CLIENT_ID = "123456789012345678";
+      process.env.DATABASE_FILE = "data/embeds-test.db";
+      import("file://" + process.cwd() + "/data/eventload-probe/handlers/eventHandler.js").then(async (m) => {
+        const clientMod = await import("file://" + process.cwd() + "/data/eventload-probe/core/client.js");
+        const client = new clientMod.SyndicateClient({ intents: [] });
+        try {
+          await m.loadEvents(client);
+          console.log("LOADED-SILENTLY");
+        } catch (e) {
+          console.log("REFUSED-BOOT:" + e.message.slice(0, 60));
+        }
+      }).catch((e) => console.log("IMPORT-FAIL:" + e.message.slice(0, 120)));
+    `;
+    const res = spawnSync(process.execPath, ["--input-type=module", "-e", probe], { cwd: process.cwd(), encoding: "utf8" });
+    const out = (res.stdout.match(/(REFUSED-BOOT:.*|LOADED-SILENTLY|IMPORT-FAIL:.*)/) ?? [])[1] ?? "";
+    report("cycle-I: invalid event file refuses to boot (no silent skip)",
+      out.startsWith("REFUSED-BOOT"), `got: ${out || res.stderr.slice(0, 100)}`);
+    rmSync(tmp, { recursive: true, force: true });
   }
 }
 

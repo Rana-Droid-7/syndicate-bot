@@ -193,7 +193,8 @@ const command: Command = {
       );
 
       // The shared graceful-exit path (identical cleanup ordering as
-      // the signal handlers in index.ts).
+      // the signal handlers in index.ts — reminders AND polls stand
+      // down before the connection drops, DB closes last).
       await gracefulExit(interaction.client, {
         reboot: false,
         reason: "/boot DM panel",

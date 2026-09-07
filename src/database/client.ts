@@ -42,9 +42,15 @@ export function getDb(): SqliteDatabase {
   // Foreign keys are off by default in SQLite — integrity is part
   // of the schema contract, so turn them on.
   db.pragma("foreign_keys = ON");
-  // Tighten durability: fsync on every commit. A reminder is a
-  // promise; losing acknowledged writes to a power cut is worse
-  // than a small write cost.
+  // WAL durability tradeoff, stated honestly: in WAL mode, synchronous
+  // NORMAL fsyncs only at checkpoints — a process crash loses nothing
+  // (the WAL survives), but an OS crash / power cut can lose the tail
+  // of the WAL since the last checkpoint. That tradeoff is accepted:
+  // reminders/polls are restored from rows that survive process death
+  // (the realistic failure class for a bot), and FULL's per-commit
+  // fsync cost is real for the per-message hot paths. If the promise
+  // ever needs to cover power loss, flip this to FULL — nothing else
+  // changes.
   db.pragma("synchronous = NORMAL");
 
   log.info("BOOT", `Database open: ${DB_PATH} (WAL, FK on)`);
@@ -266,6 +272,31 @@ const MIGRATIONS: MigrationFile[] = [
       INSERT OR IGNORE INTO jokes (content, created_by)
         SELECT '99 little bugs in the code, 99 little bugs... take one down, patch it around, 127 little bugs in the code.', 'syndicate-seed'
         WHERE (SELECT COUNT(*) FROM jokes) = 9;
+    `,
+  },
+  {
+    // Poll recap tracking (v1.1.0): every native poll the bot posts
+    // gets a row so a RESTART can't orphan the recap promise. When the
+    // user-set duration elapses, the bot ends the poll via the official
+    // Expire Poll endpoint (decimal-hour durations end EARLY — Discord
+    // itself schedules expiry in whole hours only) and posts the final
+    // tally as a reply. Rows go terminal ('closed') exactly once.
+    name: "003_poll_recaps",
+    sql: `
+      CREATE TABLE IF NOT EXISTS polls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL REFERENCES guilds(guild_id) ON DELETE CASCADE,
+        channel_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        question TEXT NOT NULL CHECK (length(question) BETWEEN 1 AND 300),
+        options TEXT NOT NULL CHECK (length(options) BETWEEN 2 AND 1000),
+        created_unix_ms INTEGER NOT NULL CHECK (created_unix_ms > 0),
+        close_unix_ms INTEGER NOT NULL CHECK (close_unix_ms > 0),
+        closed_at TEXT,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed', 'failed'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_polls_pending ON polls (status, close_unix_ms) WHERE status = 'open';
     `,
   },
 ];

@@ -62,6 +62,7 @@ export function pruneOrphanedUsers(): number {
      AND user_id NOT IN (SELECT user_id FROM reminders)
      AND user_id NOT IN (SELECT user_id FROM warnings)
      AND user_id NOT IN (SELECT author_id FROM suggestions)
+     AND user_id NOT IN (SELECT user_id FROM polls)
      AND user_id NOT IN (SELECT created_by FROM jokes)
      AND user_id NOT IN (SELECT created_by FROM eightball)
      AND user_id NOT IN (SELECT moderator_id FROM warnings)`,

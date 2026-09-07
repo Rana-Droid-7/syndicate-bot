@@ -4,7 +4,7 @@ import type { Command } from "../../types/command.js";
 import { config } from "../../core/config.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { ContextError, UserInputError } from "../../lib/errors.js";
-import { safeBoldText, truncate } from "../../lib/validation.js";
+import { escapeInlineCode, safeBoldText, truncate } from "../../lib/validation.js";
 import { reminderService } from "../../services/reminders.js";
 import { discordTimestamp } from "../../lib/format.js";
 import { log } from "../../core/logger.js";
@@ -20,7 +20,7 @@ function parseAndValidate(timeInput: string): { date: Date; delayMs: number } {
   const parsedDate = chrono.parseDate(timeInput, new Date(), { forwardDate: true });
   if (!parsedDate) {
     throw new UserInputError(
-      `I couldn't understand \`${timeInput}\` as a time — try \`in 2 hours\` or \`tomorrow 9am\`.`,
+      `I couldn't understand \`${escapeInlineCode(timeInput)}\` as a time — try \`in 2 hours\` or \`tomorrow 9am\`.`,
       `${config.prefix}remindme "<time>" <what>`,
     );
   }

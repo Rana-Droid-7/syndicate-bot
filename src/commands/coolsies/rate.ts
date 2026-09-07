@@ -1,7 +1,8 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
-import { mentionToId, isSnowflake } from "../../lib/validation.js";
+import { UserInputError } from "../../lib/errors.js";
+import { escapeInlineCode, mentionToId, isSnowflake } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
 /** Rates out of 10 — biased slightly toward kindness at the bottom end. */
@@ -44,10 +45,10 @@ const command: Command = {
     if (!mentioned && args[0]) {
       const bare = mentionToId(args[0]);
       if (!isSnowflake(bare)) {
-        await message.reply({
-          embeds: [errorEmbed(`\`${args[0]}\` doesn't look like a valid user mention or ID.`)],
-        });
-        return;
+        throw new UserInputError(
+          `\`${escapeInlineCode(args[0])}\` doesn't look like a valid user mention or ID.`,
+          "rate [@user]",
+        );
       }
       // A bare (un-cached) ID is valid input — try to resolve it so we
       // rate the person asked about, never silently fall back to self.

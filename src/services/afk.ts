@@ -78,24 +78,35 @@ export const afkService = {
     return { reason, sinceUnixMs };
   },
 
-  get(guildId: string, userId: string): AfkStatus | null {
-    const row = afkRepository.get(guildId, userId);
-    return row ? { reason: row.reason, sinceUnixMs: row.since_unix_ms } : null;
-  },
-
   /** Clears status; returns how long they were away (or null if they weren't AFK). */
   clear(guildId: string, userId: string): { awayMs: number } | null {
     const row = afkRepository.get(guildId, userId);
     if (!row) return null;
     afkRepository.clear(guildId, userId);
-    afkIndex.get(guildId)?.delete(userId);
+    const guildSet = afkIndex.get(guildId);
+    guildSet?.delete(userId);
+    // Drop the guild's Set once it's empty: every member clearing AFK
+    // would otherwise leave a dead empty Set per guild for the
+    // process lifetime (thousands of guilds -> thousands of Sets).
+    if (guildSet && guildSet.size === 0) afkIndex.delete(guildId);
     log.info("AFK", `Cleared AFK for ${userId} in guild ${guildId}.`);
     return { awayMs: Math.max(0, Date.now() - row.since_unix_ms) };
   },
 
   /** AFK statuses for a set of mentioned users (notice path). */
   forMentions(guildId: string, userIds: string[]): Map<string, AfkStatus> {
-    const rows = afkRepository.getMany(guildId, userIds);
+    // Pre-filter through the in-memory index: only mentioned users
+    // actually AFK reach the SQL layer. Before this, every message
+    // mentioning anyone in a guild with any AFK user ran a full
+    // IN(...) query — and each distinct mention-count minted a new
+    // cached prepared statement (unbounded arity growth). The index
+    // is the write-through truth for membership; the DB lookup is
+    // only for the reason/timestamp payload.
+    const set = afkIndex.get(guildId);
+    if (!set || set.size === 0) return new Map();
+    const afkMentioned = userIds.filter((id) => set.has(id));
+    if (afkMentioned.length === 0) return new Map();
+    const rows = afkRepository.getMany(guildId, afkMentioned);
     return new Map(rows.map((r: AfkRow) => [r.user_id, { reason: r.reason, sinceUnixMs: r.since_unix_ms }]));
   },
 };

@@ -302,8 +302,25 @@ async function handleCommandError(message: Message, error: unknown, label: strin
     return;
   }
 
-  // Unknown/unexpected: full log, generic clean user message.
+  // Unknown/unexpected: full log, generic clean user message, AND the
+  // same dev-log embed the slash lane sends — a crash-class bug in a
+  // prefix command must be as visible to the developer as one in a
+  // slash command (every public command is prefix-lane; before this,
+  // a nightly >afk DB failure was console-only while an identical
+  // /warn failure paged the dev channel).
   log.error("PREFIX", `Error executing ${label}`, error);
+  await sendDevLog(
+    message.client,
+    baseEmbed()
+      .setTitle("⚠️ Command Error")
+      .addFields(
+        { name: "Surface", value: "prefix", inline: true },
+        { name: "Command", value: label, inline: true },
+        { name: "User", value: `${message.author.tag} (\`${message.author.id}\`)`, inline: true },
+        { name: "Server", value: message.guild ? `${message.guild.name} (\`${message.guild.id}\`)` : "DM", inline: true },
+        { name: "Detail", value: `\`\`\`${errorDetail(error)}\`\`\``, inline: false },
+      ),
+  ).catch(() => null); // never let the devlog attempt block the user reply
   await message
     .reply({ embeds: [errorEmbed("Something went wrong running that command.")] })
     .catch((err) => log.error("PREFIX", "Also failed to notify the user about the error", err));

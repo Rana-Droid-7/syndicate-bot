@@ -10,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseQuotedArgs, isSnowflake, parseIntInRange, truncate, escapeMarkdownBold, sanitizeEcho, sanitizeEchoOrReject, escapeCodeBlock, safeBoldText } from "../lib/validation.js";
+import { parseQuotedArgs, isSnowflake, parseIntInRange, truncate, escapeMarkdownBold, sanitizeEcho, sanitizeEchoOrReject, escapeCodeBlock, escapeInlineCode, safeBoldText, mentionToId } from "../lib/validation.js";
 import { Cooldowns } from "../lib/cooldowns.js";
 import { rollDie } from "../commands/coolsies/dice.js";
 import { editDistance, findStartsWithMatches, findClosestMatch, type SuggestionCandidate } from "../lib/suggest.js";
@@ -54,7 +54,9 @@ test("parseQuotedArgs: extra whitespace collapses", () => {
   assert.deepEqual(args, ["a", "b"]);
 });
 
-test("parseQuotedArgs: bare > and >>> survive", () => {
+test("parseQuotedArgs: empty input yields no tokens", () => {
+  // The bare ">" / ">>>" dispatch edges are covered by verify-dispatcher;
+  // this unit pins the tokenizer itself on empty input.
   const { args } = parseQuotedArgs("");
   assert.deepEqual(args, []);
 });
@@ -282,31 +284,156 @@ test("rps: outcome table is correct", () => {
   assert.equal(wins.length, 3, "exactly 3 winning pairs in a 3-choice table");
 });
 
-// ---------- poll argument parsing (v0.5.4 prefix surface) ----------
-test("poll args: quoted question and options, trailing minutes", () => {
-  const { question, options, minutes } = parsePollArgs(["best food?", "pizza", "pasta", "curry", "10"]);
+// ---------- poll argument parsing (v1.1.0 grammar: time-first, decimal hours, comma options) ----------
+test("poll args: decimal-hour duration, quoted question, comma options", () => {
+  const { question, options, hours } = parsePollArgs(["2", "best food?", "pizza,", "pasta,", "curry"]);
   assert.equal(question, "best food?");
   assert.deepEqual(options, ["pizza", "pasta", "curry"]);
-  assert.equal(minutes, 10);
+  assert.equal(hours, 2);
 });
 
-test("poll args: unquoted tokens, default duration", () => {
-  const { question, options, minutes } = parsePollArgs(["lunch?", "sushi", "ramen"]);
-  assert.equal(question, "lunch?");
-  assert.deepEqual(options, ["sushi", "ramen"]);
-  assert.equal(minutes, 5, "no trailing integer -> default 5 minutes");
+test("poll args: fractional hours parse exactly (0.5 = 30 minutes)", () => {
+  const { hours } = parsePollArgs(["0.5", "q?", "a,", "b"]);
+  assert.equal(hours, 0.5);
+  const tiny = parsePollArgs(["0.01", "q?", "a,", "b"]);
+  assert.equal(tiny.hours, 0.01, "0.01h (36 seconds) is the floor");
 });
 
-test("poll args: rejects too few options / bad durations / too many options", () => {
-  assert.throws(() => parsePollArgs(["q?", "only-one"]));
-  assert.throws(() => parsePollArgs(["q?", "a", "b", "0"]), /between 1 and 60/);
-  assert.throws(() => parsePollArgs(["q?", "a", "b", "61"]));
-  // 11 options + question + minutes = 13 args
-  const tooMany = ["q?", ...Array.from({ length: 11 }, (_, i) => `opt${i}`), "5"];
+test("poll args: comma INSIDE a quoted option survives the split", () => {
+  // The dispatcher's quote-aware tokenizer keeps "yes, definitely" as
+  // ONE token; the comma-split must not tear it apart.
+  const { options } = parsePollArgs(["1", "q?", "yes, definitely,", "no"]);
+  assert.deepEqual(options, ["yes, definitely", "no"]);
+});
+
+test("poll args: unquoted multi-word options join across tokens", () => {
+  // >poll 1 q? ice cream, cake — the dispatcher splits on whitespace;
+  // the joiner reassembles "ice cream" before the comma ends it.
+  const { options } = parsePollArgs(["1", "q?", "ice", "cream,", "cake"]);
+  assert.deepEqual(options, ["ice cream", "cake"]);
+});
+
+test("poll args: rejects too few args / bad durations / too many options", () => {
+  assert.throws(() => parsePollArgs(["2", "q?"]), /at least two/);
+  // missing duration entirely
+  assert.throws(() => parsePollArgs(["q?", "a,", "b"]), /isn't a valid duration/);
+  // hex/scientific/underscore rejected — same strict-decimal rule as parseIntInRange
+  assert.throws(() => parsePollArgs(["0x10", "q?", "a,", "b"]), /isn't a valid duration/);
+  assert.throws(() => parsePollArgs(["1e3", "q?", "a,", "b"]), /isn't a valid duration/);
+  assert.throws(() => parsePollArgs(["1_0", "q?", "a,", "b"]), /isn't a valid duration/);
+  // bounds: below floor, above ceiling
+  assert.throws(() => parsePollArgs(["0.001", "q?", "a,", "b"]), /between 0.01 and 168/);
+  assert.throws(() => parsePollArgs(["169", "q?", "a,", "b"]), /between 0.01 and 168/);
+  // 11 options
+  const tooMany = ["1", "q?", ...Array.from({ length: 11 }, (_, i) => `o${i},`), "end"];
   assert.throws(() => parsePollArgs(tooMany), /Max 10 options/);
-  // The question itself isn't consumed as minutes even if numeric-looking
-  const q = parsePollArgs(["42", "a", "b"]);
-  assert.equal(q.question, "42");
+  // empty-double-comma doesn't crash or phantom-split
+  const gaps = parsePollArgs(["1", "q?", "a,,", "b"]);
+  assert.deepEqual(gaps.options, ["a", "b"]);
+});
+
+test("poll args: length limits enforced AFTER sanitization (mention-breaking expands text)", () => {
+  // Breaking @everyone inserts a ZWSP, so text EXPANDS by one char:
+  // a raw 55-char option becomes 56 sanitized -> over the native
+  // 55-char answer cap. Measuring before sanitizing would let that
+  // through and fail at the API with Invalid Form Body.
+  const raw55 = "@everyone" + "x".repeat(46); // exactly 55
+  assert.equal(raw55.length, 55);
+  assert.throws(() => parsePollArgs(["1", "q?", "a,", raw55]), /under 55 characters/);
+  // and one that is 54 raw, 55 after the ZWSP insert -> accepted
+  const raw54 = "@everyone" + "x".repeat(45); // 54 -> 55 sanitized
+  const ok = parsePollArgs(["1", "q?", "a,", raw54]);
+  assert.equal(ok.options[1].length, 55);
+  // question limit (300) is post-sanitize too
+  const rawQ300 = "@everyone" + "y".repeat(291);
+  assert.equal(rawQ300.length, 300);
+  assert.throws(() => parsePollArgs(["1", rawQ300, "a,", "b"]), /under 300 characters/);
+});
+
+test("poll args: invisible-only question/options rejected as input errors", () => {
+  assert.throws(() => parsePollArgs(["1", "\u200B\u200B\u200B", "a,", "b"]), /invisible characters/);
+  assert.throws(() => parsePollArgs(["1", "q?", "a,", "\u200B\u200B\u200B"]), /invisible characters/);
+});
+
+// ---------- poll recap builder (v1.1.0: final tally after close) ----------
+// Mock message carrying a native poll shape — exactly the surface
+// buildRecapEmbed reads: poll.answers, an ordered collection of
+// { voteCount } in answer-creation order.
+function makePollMessage(voteCounts: number[]): { poll: { answers: Map<number, { voteCount: number }> } } {
+  const answers = new Map<number, { voteCount: number }>();
+  voteCounts.forEach((count, i) => answers.set(i + 1, { voteCount: count }));
+  return { poll: { answers } };
+}
+
+test("poll recap: single winner with counts and percentages of total", async () => {
+  const { buildRecapEmbed } = await import("../services/polls.js");
+  const embed = buildRecapEmbed("best food?", ["pizza", "pasta", "curry"], makePollMessage([3, 1, 0]) as never);
+  const json = embed.toJSON();
+  const desc = String(json.description);
+  assert.ok(desc.includes("**pizza** 🏆 — 3 votes (75%)"), `winner line missing: ${desc}`);
+  assert.ok(desc.includes("**pasta** — 1 vote (25%)"), `loser line missing: ${desc}`);
+  assert.ok(desc.includes("**pizza** won with 3 of 4 votes (75%)"), `verdict missing: ${desc}`);
+  assert.ok(String(json.footer?.text).includes("4 votes in total"));
+});
+
+test("poll recap: tie reports every winner; zero-vote poll reports the void", async () => {
+  const { buildRecapEmbed } = await import("../services/polls.js");
+  const tie = buildRecapEmbed("t?", ["a", "b"], makePollMessage([2, 2]) as never).toJSON();
+  assert.ok(String(tie.description).includes("It's a tie between **a** and **b** at 2 votes each (50%)"), String(tie.description));
+
+  const none = buildRecapEmbed("n?", ["a", "b"], makePollMessage([0, 0]) as never).toJSON();
+  assert.ok(String(none.description).includes("Nobody voted"), String(none.description));
+  assert.ok(String(none.footer?.text).includes("0 votes in total"));
+});
+
+test("poll recap: an ended poll missing an answer's count renders 0, never crashes", async () => {
+  const { buildRecapEmbed } = await import("../services/polls.js");
+  // Discord: "If answer_counts does not contain an entry for a
+  // particular answer, then there are no votes for that answer" — a
+  // sparse answers collection is a legal shape the builder must
+  // survive. (Answers map in creation order; missing entries absent.)
+  const sparse = { poll: { answers: new Map([[1, { voteCount: 1 }]]) } };
+  const embed = buildRecapEmbed("s?", ["a", "b", "c"], sparse as never).toJSON();
+  const desc = String(embed.description);
+  assert.ok(desc.includes("**a** 🏆 — 1 vote (100%)"), desc);
+  assert.ok(desc.includes("**b** — 0 votes (0%)"), desc);
+});
+
+// ---------- CYCLE I regression pins (the audit's exact contracts) ----------
+test("cycle-I: escapeInlineCode neutralizes backticks — inline spans can't be closed early", () => {
+  // The F1/F2 attack: a user backtick closes the error's code span,
+  // and anything after it (a raw <@id> in CONTENT replies) renders
+  // outside the span. The helper replaces backticks with a visually
+  // similar, inert character.
+  const hostile = "x` <@123456789012345678>";
+  const escaped = escapeInlineCode(hostile);
+  assert.ok(!escaped.includes("`"), "no raw backticks may survive");
+  assert.ok(escaped.includes("\u2019"), "neutralized with the right-single-quote lookalike");
+  assert.equal(escapeInlineCode("plain"), "plain", "normal text unchanged");
+});
+
+test("cycle-I: mentionToId is strict — fragments never concatenate into a foreign ID", () => {
+  // The F3 attack: "123456789012345<@2>" used to strip mention chars
+  // and CONCATENATE the digits into a different user's snowflake.
+  const hostile = "123456789012345<@2>";
+  const parsed = mentionToId(hostile);
+  assert.notEqual(parsed, "1234567890123452", "must not concatenate fragments");
+  assert.ok(!isSnowflake(parsed), "the mangled form must fail validation downstream");
+  // The legitimate forms still work.
+  assert.equal(mentionToId("<@111111111111111111>"), "111111111111111111");
+  assert.equal(mentionToId("<@!111111111111111111>"), "111111111111111111");
+  assert.equal(mentionToId(" 111111111111111111 "), "111111111111111111", "bare IDs pass through trimmed");
+});
+
+test("cycle-I: sanitizeEcho strips bidi marks (RTL/LTR override spoofing)", () => {
+  // The F5 attack: U+200E/U+200F/U+061C enable reversed-text spoofs
+  // in echoed notices (AFK reasons, poll questions).
+  const hostile = "safe\u200Ftext\u200Ehere\u061Cok";
+  const clean = sanitizeEcho(hostile);
+  assert.ok(!/[\u200E\u200F\u061C]/.test(clean), "no bidi marks may survive");
+  assert.equal(clean, "safetexthereok");
+  // ...and the classic surfaces still work.
+  assert.ok(sanitizeEcho("@everyone").includes("\u200b"));
 });
 
 // ---------- regression: audit round fixes (v1.0.0 max-mode audit) ----------

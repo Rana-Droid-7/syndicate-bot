@@ -10,6 +10,7 @@ import {
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
+import { escapeInlineCode } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
 
 const CHOICES = ["rock", "paper", "scissors"] as const;
@@ -44,7 +45,7 @@ const command: Command = {
     // retry isn't cooldown-locked.
     if (raw && !CHOICES.includes(raw)) {
       throw new UserInputError(
-        `\`${args[0]}\` isn't rock, paper, or scissors — try \`rps rock\`, or plain \`rps\` for buttons.`,
+        `\`${escapeInlineCode(args[0])}\` isn't rock, paper, or scissors — try \`rps rock\`, or plain \`rps\` for buttons.`,
         "rps [rock|paper|scissors]",
       );
     }

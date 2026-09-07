@@ -8,7 +8,8 @@ import { baseEmbed } from "./lib/embeds.js";
 import { errorDetail } from "./lib/safeError.js";
 import { flushLogSink, initLogSink } from "./core/logSink.js";
 import { closeDb, getDb, runMigrations } from "./database/client.js";
-import { reminderService, resetForRestart } from "./services/reminders.js";
+import { reminderService, resetForRestart as resetRemindersForRestart } from "./services/reminders.js";
+import { pollService, resetForRestart as resetPollsForRestart } from "./services/polls.js";
 import { warmAfkIndex } from "./services/afk.js";
 import { registerRestartHook } from "./lib/restartHook.js";
 import { acquireSingleInstanceLock, releaseSingleInstanceLock } from "./lib/singleInstanceLock.js";
@@ -57,6 +58,7 @@ process.on("uncaughtException", (error) => {
     ).catch(() => null); // never let the devlog attempt block or crash the exit path
     await announceOffline(client, "Uncaught exception (crash)", null).catch(() => null);
     reminderService.beginShutdown();
+    pollService.beginShutdown();
     await flushLogSink().catch(() => null);
     await client.destroy().catch(() => null);
     closeDb();
@@ -115,6 +117,11 @@ async function bootClient(): Promise<SyndicateClient> {
   reminderService.startSweep(client);
   if (restored > 0) log.info("BOOT", `Reminder subsystem online (${restored} pending).`);
 
+  // Same contract for open polls: rows restored, close timers armed.
+  const openPolls = pollService.restore(client);
+  pollService.startSweep(client);
+  if (openPolls > 0) log.info("BOOT", `Poll recap subsystem online (${openPolls} open).`);
+
   // Warm the in-memory AFK index from the database so the per-message
   // hot path never needs a SELECT before the first set/clear.
   warmAfkIndex();
@@ -147,7 +154,60 @@ async function main() {
   }
   log.info("BOOT", `Database integrity: ${String(integrity)}.`);
 
-  const client = await bootClient();
+  // ---- signal handling: registered BEFORE the slow boot steps ----
+  // Command loading, Discord login, and reminder/poll restore can each
+  // take seconds; Ctrl+C during any of them previously fell through to
+  // default SIGINT behavior (hard exit) with zero cleanup. The
+  // handlers resolve the CURRENT client through a mutable binding — a
+  // soft restart replaces the client, and the captured first-boot
+  // reference would announce-offline/destroy a dead client while the
+  // live one was never cleanly disconnected.
+  let currentClient: SyndicateClient | null = null;
+  let signalShutdownStarted = false;
+  const shutdown = async (signal: string) => {
+    if (signalShutdownStarted) return; // second signal during shutdown — ignore
+    signalShutdownStarted = true;
+
+    const client = currentClient ?? globalThis.__syndicateClient;
+    log.info("SHUTDOWN", `Received ${signal}, disconnecting cleanly...`);
+    // Announce "going offline" to the dev-log channel BEFORE the
+    // connection drops, so the message actually gets delivered.
+    if (client) await announceOffline(client, `Received ${signal} (process signal)`, null).catch(() => null);
+    // Stop reminder + poll timers before storage closes — in-flight
+    // ones defer to the next startup's restore pass instead of
+    // crashing.
+    reminderService.beginShutdown();
+    pollService.beginShutdown();
+    // Drain any queued verbose-log lines while the connection is
+    // still alive — no silent gaps in the private logs channel.
+    await flushLogSink().catch(() => null);
+    if (client) {
+      try {
+        await client.destroy();
+        log.info("SHUTDOWN", "Client destroyed cleanly.");
+      } catch (error) {
+        log.error("SHUTDOWN", "Error while destroying client (exiting anyway)", error);
+      }
+    }
+    // Close the database AFTER Discord is down: pending reminder
+    // deliveries triggered by timers won't race the close.
+    closeDb();
+    releaseSingleInstanceLock();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT").catch((error) => {
+      log.error("SHUTDOWN", "Unexpected error in shutdown handler", error);
+      process.exit(1);
+    });
+  });
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM").catch((error) => {
+      log.error("SHUTDOWN", "Unexpected error in shutdown handler", error);
+      process.exit(1);
+    });
+  });
 
   // ---- soft-restart machinery (used by /boot's Reboot) ----
   // A soft restart tears down the Discord connection, creates a
@@ -155,6 +215,11 @@ async function main() {
   // so it works under `npm run dev` and bare `node` alike. Under a
   // process manager nothing changes: the process still never exits
   // on Reboot, so there's no restart-loop interaction to worry about.
+  // currentClient (not a captured const) is destroyed: on the SECOND
+  // restart the first boot's captured reference would be
+  // already-dead, and the still-live client from the first restart
+  // would leak — two connected gateways on one token, the exact
+  // double-instance incident the lock exists to prevent.
   let restarting = false;
   const softRestart = async (reason: string, requestedBy: string): Promise<void> => {
     if (restarting) return; // a second click racing the restart
@@ -163,20 +228,26 @@ async function main() {
 
     // Stand down timers, drain the mirror queue while connected.
     reminderService.beginShutdown();
+    pollService.beginShutdown();
     await flushLogSink().catch(() => null);
 
-    try {
-      await client.destroy();
-      log.info("SHUTDOWN", "Old client destroyed cleanly.");
-    } catch (error) {
-      log.error("SHUTDOWN", "Error destroying old client (continuing restart)", error);
+    const oldClient = currentClient;
+    if (oldClient) {
+      try {
+        await oldClient.destroy();
+        log.info("SHUTDOWN", "Old client destroyed cleanly.");
+      } catch (error) {
+        log.error("SHUTDOWN", "Error destroying old client (continuing restart)", error);
+      }
+      currentClient = null;
     }
 
     // DB stays open — same process, same connection. Just re-arm the
     // subsystems that stood down.
-    resetForRestart();
+    resetRemindersForRestart();
+    resetPollsForRestart();
     try {
-      await bootClient();
+      currentClient = await bootClient();
       log.info("BOOT", "Soft restart complete — bot is back online.");
     } catch (error) {
       log.error("BOOT", "Soft restart FAILED to bring the bot back up", error);
@@ -194,50 +265,8 @@ async function main() {
     void softRestart(reason, requestedBy);
   });
 
-  // ---- signal handling: registered BEFORE the slow boot steps ----
-  // Command loading, Discord login, and reminder restore can each
-  // take seconds; Ctrl+C during any of them previously fell through
-  // to default SIGINT behavior (hard exit) with zero cleanup.
-  let signalShutdownStarted = false;
-  const shutdown = async (signal: string) => {
-    if (signalShutdownStarted) return; // second signal during shutdown — ignore
-    signalShutdownStarted = true;
-
-    log.info("SHUTDOWN", `Received ${signal}, disconnecting cleanly...`);
-    // Announce "going offline" to the dev-log channel BEFORE the
-    // connection drops, so the message actually gets delivered.
-    await announceOffline(client, `Received ${signal} (process signal)`, null).catch(() => null);
-    // Stop reminder timers before storage closes — in-flight ones
-    // defer to the next startup's restore pass instead of crashing.
-    reminderService.beginShutdown();
-    // Drain any queued verbose-log lines while the connection is
-    // still alive — no silent gaps in the private logs channel.
-    await flushLogSink().catch(() => null);
-    try {
-      await client.destroy();
-      log.info("SHUTDOWN", "Client destroyed cleanly.");
-    } catch (error) {
-      log.error("SHUTDOWN", "Error while destroying client (exiting anyway)", error);
-    }
-    // Close the database AFTER Discord is down: pending reminder
-    // deliveries triggered by timers won't race the close.
-    closeDb();
-    releaseSingleInstanceLock();
-    process.exit(0);
-  };
-
-  process.on("SIGINT", () => {
-    shutdown("SIGINT").catch((error) => {
-      log.error("SHUTDOWN", "Unexpected error in shutdown handler", error);
-      process.exit(1);
-    });
-  });
-  process.on("SIGTERM", () => {
-    shutdown("SIGTERM").catch((error) => {
-      log.error("SHUTDOWN", "Unexpected error in shutdown handler", error);
-      process.exit(1);
-    });
-  });
+  // ---- the slow boot steps (signal handlers are already armed) ----
+  currentClient = await bootClient();
 }
 
 main().catch((error) => {
