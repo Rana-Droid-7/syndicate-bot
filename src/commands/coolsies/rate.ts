@@ -1,6 +1,6 @@
 import { type Message } from "discord.js";
 import type { Command } from "../../types/command.js";
-import { baseEmbed, errorEmbed } from "../../lib/embeds.js";
+import { baseEmbed } from "../../lib/embeds.js";
 import { UserInputError } from "../../lib/errors.js";
 import { escapeInlineCode, mentionToId, isSnowflake } from "../../lib/validation.js";
 import { log } from "../../core/logger.js";
@@ -54,8 +54,7 @@ const command: Command = {
       // rate the person asked about, never silently fall back to self.
       const resolved = await message.client.users.fetch(bare).catch(() => null);
       if (!resolved) {
-        await message.reply({ embeds: [errorEmbed("Couldn't find that user.")] });
-        return;
+        throw new UserInputError("Couldn't find that user.", "rate [@user]");
       }
       await message.reply({ embeds: [buildEmbed(resolved.toString(), resolved.username)] });
       return;

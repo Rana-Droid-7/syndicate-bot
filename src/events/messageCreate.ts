@@ -5,16 +5,12 @@ import { config } from "../core/config.js";
 import { baseEmbed, errorEmbed } from "../lib/embeds.js";
 import { sendDevLog } from "../lib/devlog.js";
 import { discordTimestamp, formatDuration } from "../lib/format.js";
-import {
-  findClosestMatch,
-  findStartsWithMatches,
-  formatLookupDescription,
-  MIN_SUGGESTION_LENGTH,
-  type SuggestionCandidate,
-} from "../lib/suggest.js";
+import { formatLookupDescription } from "../lib/suggest.js";
+import { routePrefixCommand } from "../lib/prefixRoute.js";
 import { parseQuotedArgs, escapeMarkdownBold } from "../lib/validation.js";
 import { cooldowns } from "../lib/cooldowns.js";
 import {
+  asTaxonomyError,
   mapErrorToReply,
 } from "../lib/errors.js";
 import { UserInputError, ContextError, PermissionError, CooldownError } from "../lib/errors.js";
@@ -39,17 +35,6 @@ setInterval(() => {
   }
   cooldowns.sweep();
 }, COOLDOWN_SWEEP_INTERVAL_MS).unref();
-
-/** Visible suggestion candidates for this viewer (admin/owner filtered). */
-function visibleCandidates(client: SyndicateClient, message: Message): SuggestionCandidate[] {
-  const isAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator) ?? false;
-  const isDev = config.developerIds.includes(message.author.id);
-  return client.suggestionCandidates.filter((c) => {
-    if (c.command.category === "admin") return isAdmin;
-    if (c.command.category === "owner") return isDev;
-    return true;
-  });
-}
 
 const event: BotEvent<"messageCreate"> = {
   name: "messageCreate",
@@ -163,10 +148,19 @@ const event: BotEvent<"messageCreate"> = {
     const commandName = args.shift()?.toLowerCase();
     if (!commandName) return; // bare ">" — not a command
 
-    const command = client.prefixCommands.get(commandName);
+    // The routing decision comes from the shared pure core
+    // (lib/prefixRoute.ts) — the same function the dispatch harness
+    // tests, so the harness can never drift from reality.
+    const viewer = {
+      userId: message.author.id,
+      isAdminHere: message.member?.permissions.has(PermissionFlagsBits.Administrator) ?? false,
+    };
+    const route = routePrefixCommand(client, commandName, viewer);
 
     // ---- known command: dispatch with cooldown + error taxonomy ----
-    if (command?.prefixExecute) {
+    if (route.kind === "known") {
+      const command = client.prefixCommands.get(commandName);
+      if (!command?.prefixExecute) return; // unreachable (route says known) — but never crash
       // Cap what the dispatch log carries: a pasted 2000-char message
       // full of quoted args would otherwise dump into the log mirror.
       const loggedArgs = args.length > 8 ? [...args.slice(0, 8), `…+${args.length - 8} more`] : args;
@@ -179,7 +173,12 @@ const event: BotEvent<"messageCreate"> = {
       try {
         cooldowns.check(guildId, message.author.id, command.name ?? command.data?.name ?? "?", command.cooldownSeconds ?? 0);
         await command.prefixExecute(message, args);
-      } catch (error) {
+      } catch (thrown) {
+        // Raw SqliteErrors from any repository call normalize into the
+        // DatabaseError taxonomy HERE — the user gets the dedicated
+        // storage-failure message and the dev channel the dedicated
+        // Database Error devlog, not the generic crash-class path.
+        const error = asTaxonomyError(thrown);
         // A failure that happened BEFORE any effect (bad input, wrong
         // place, missing permission) must not consume the cooldown —
         // the user retries immediately and it must not cooldown-lock.
@@ -211,70 +210,66 @@ const event: BotEvent<"messageCreate"> = {
     }
 
     // ---- slash-only attempts: explain with usage ----
-    const slashOnly = client.slashCommands.get(commandName);
-    if (client.slashOnlyCommands.has(commandName) && slashOnly) {
-      log.debug("PREFIX", `${config.prefix}${commandName} is slash-only — replying with an explanation.`);
-      const cmd = slashOnly as { usage: string; category: string };
-      await message
-        .reply({
-          embeds: [
-            errorEmbed(
-              `**/${commandName}** is a slash-only command — it doesn't work with the \`${config.prefix}\` prefix.` +
-                (cmd.category === "owner" ? "\nIt also requires developer permissions." : ""),
-            ).addFields({ name: "Correct usage", value: `\`${cmd.usage}\` — type it as a native slash command.`, inline: false }),
-          ],
-        })
-        .catch((err) => log.error("PREFIX", "Failed to send slash-only explanation", err));
+    if (route.kind === "slash-only") {
+      const slashOnly = client.slashCommands.get(commandName);
+      if (slashOnly) {
+        log.debug("PREFIX", `${config.prefix}${commandName} is slash-only — replying with an explanation.`);
+        const cmd = slashOnly as { usage: string; category: string };
+        await message
+          .reply({
+            embeds: [
+              errorEmbed(
+                `**/${commandName}** is a slash-only command — it doesn't work with the \`${config.prefix}\` prefix.` +
+                  (cmd.category === "owner" ? "\nIt also requires developer permissions." : ""),
+              ).addFields({ name: "Correct usage", value: `\`${cmd.usage}\` — type it as a native slash command.`, inline: false }),
+            ],
+          })
+          .catch((err) => log.error("PREFIX", "Failed to send slash-only explanation", err));
+      }
       return;
     }
 
     // ---- unknown: starts-with lookup, then typo suggestion ----
-    if (commandName.length <= 20 && /^[a-z0-9]+$/i.test(commandName)) {
-      const candidates = visibleCandidates(client, message);
-
-      const startsWith = findStartsWithMatches(candidates, commandName);
-      if (startsWith.length > 0) {
-        const list = formatLookupDescription(startsWith);
-        log.info("PREFIX", `${config.prefix}${commandName} unknown — listed ${list.shown}/${list.total} starts-with match(es).`);
-        await message
-          .reply({
-            embeds: [
-              baseEmbed()
-                .setTitle(`🔍 Commands matching \`${config.prefix}${commandName}\``)
-                .setDescription(
-                  `I don't know a command called \`${config.prefix}${commandName}\`, but here's everything that starts with it:\n\n` +
-                    list.description,
-                )
-                .setFooter({ text: `Tip: ${config.prefix}help <command> shows detailed usage for any of them.` }),
-            ],
-          })
-          .catch((err) => log.error("PREFIX", "Failed to send starts-with lookup", err));
-        return;
-      }
-
-      if (commandName.length >= MIN_SUGGESTION_LENGTH) {
-        const suggestion = findClosestMatch(candidates, commandName);
-        if (suggestion) {
-          const suggestedName = suggestion.name ?? suggestion.data?.name ?? "?";
-          // Prefix commands store usage prefix-free; render with the env prefix.
-          const suggestedUsage =
-            suggestion.surface === "prefix-only" ? `${config.prefix}${suggestion.usage}` : suggestion.usage;
-          log.info("PREFIX", `${config.prefix}${commandName} looks like a typo of "${suggestedName}" — suggesting it.`);
-          await message
-            .reply({
-              embeds: [
-                errorEmbed(
-                  `I don't know a command called \`${config.prefix}${commandName}\` — did you mean **${suggestedName}**?`,
-                ).addFields({ name: "Correct usage", value: `\`${suggestedUsage}\``, inline: false }),
-              ],
-            })
-            .catch((err) => log.error("PREFIX", "Failed to send typo suggestion", err));
-          return;
-        }
-      }
+    if (route.kind === "lookup") {
+      const list = formatLookupDescription(route.matches);
+      log.info("PREFIX", `${config.prefix}${commandName} unknown — listed ${list.shown}/${list.total} starts-with match(es).`);
+      await message
+        .reply({
+          embeds: [
+            baseEmbed()
+              .setTitle(`🔍 Commands matching \`${config.prefix}${commandName}\``)
+              .setDescription(
+                `I don't know a command called \`${config.prefix}${commandName}\`, but here's everything that starts with it:\n\n` +
+                  list.description,
+              )
+              .setFooter({ text: `Tip: ${config.prefix}help <command> shows detailed usage for any of them.` }),
+          ],
+        })
+        .catch((err) => log.error("PREFIX", "Failed to send starts-with lookup", err));
+      return;
     }
 
-    // Nothing matched — leave it alone; could be prose starting with ">".
+    if (route.kind === "typo") {
+      const suggestion = route.suggestion;
+      const suggestedName = suggestion.name ?? suggestion.data?.name ?? "?";
+      // Prefix commands store usage prefix-free; render with the env prefix.
+      const suggestedUsage =
+        suggestion.surface === "prefix-only" ? `${config.prefix}${suggestion.usage}` : suggestion.usage;
+      log.info("PREFIX", `${config.prefix}${commandName} looks like a typo of "${suggestedName}" — suggesting it.`);
+      await message
+        .reply({
+          embeds: [
+            errorEmbed(
+              `I don't know a command called \`${config.prefix}${commandName}\` — did you mean **${suggestedName}**?`,
+            ).addFields({ name: "Correct usage", value: `\`${suggestedUsage}\``, inline: false }),
+          ],
+        })
+        .catch((err) => log.error("PREFIX", "Failed to send typo suggestion", err));
+      return;
+    }
+
+    // route.kind === "ignore" — nothing matched; could be prose
+    // starting with ">". Silence.
   },
 };
 

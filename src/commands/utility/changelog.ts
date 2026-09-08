@@ -15,6 +15,17 @@ interface ReleaseNotes {
 // length limits and nobody scrolls a changelog in-chat anyway.
 const RELEASES: ReleaseNotes[] = [
   {
+    version: "1.1.2",
+    date: "2026-09-08",
+    highlights: [
+      "**Dispatcher truth** — the prefix routing decision tree exists exactly once (lib/prefixRoute.ts); the dispatch harness now tests the REAL router, not a re-implementation that could drift",
+      "**DatabaseError is real now** — raw SQLite failures get the dedicated storage message and devlog instead of the generic crash path",
+      "**Docs can't lie about counts** — the unit-test and timer counts are enforced in CI alongside the rest",
+      "`/warn add` no longer broadcasts the target's warning count; webhook URLs are redacted; soft restarts announce offline",
+      "The audit's long tail: dead code removed, double-logging deduplicated, log tags honest",
+    ],
+  },
+  {
     version: "1.1.1",
     date: "2026-09-07",
     highlights: [

@@ -27,7 +27,6 @@ export interface CollectionService<R extends CollectionRow> {
 export interface CollectionConfig<R extends CollectionRow> {
   /** The command's canonical name — for logs and error text. */
   commandName: string;
-  /** Log tag, e.g. "COOLSIES". */
   /** Singular noun shown in messages — "joke" / "response". */
   noun: string;
   /** Capitalized label for embeds — "Jokes" / "8-Ball Responses". */

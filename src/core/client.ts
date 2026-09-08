@@ -1,6 +1,7 @@
 import { Client, Collection, GatewayIntentBits, Partials } from "discord.js";
 import type { AnyCommand, Command } from "../types/command.js";
 import type { SuggestionCandidate } from "../lib/suggest.js";
+import { log } from "./logger.js";
 
 export class SyndicateClient extends Client {
   // Every loaded command, keyed by canonical name — slash-only
@@ -40,7 +41,7 @@ export class SyndicateClient extends Client {
     // sweep/restore safety nets re-deliver anything missed during a
     // brief disconnect anyway.
     this.on("error", (error) => {
-      console.error(`[${new Date().toISOString()}] [ERROR] [EVENT] Gateway/client error (process continues):`, error);
+      log.error("EVENT", "Gateway/client error (process continues)", error);
     });
   }
 }

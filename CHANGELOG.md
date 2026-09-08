@@ -2,6 +2,33 @@
 
 All notable changes to Syndicate Bot are documented here. In-chat, use `changelog` — it shows the most recent releases from this same history.
 
+## v1.1.2 — 2026-09-08 (Cycle I, part 2: dispatcher truth, taxonomy completion, drift-proofing)
+
+**The second half of Cycle I** — the findings that needed design work rather than a spot fix, plus every remaining nit and dead-code item from the audit's ~60-finding list.
+
+### Dispatcher truth (the biggest one)
+- **The prefix dispatch decision tree now exists exactly once.** A new `lib/prefixRoute.ts` holds the pure routing core (known / slash-only / lookup / typo / ignore) and THE single viewer-visibility filter — previously three copies existed (messageCreate, help.ts, and verify-dispatcher's inline re-implementation), the exact "fixture drift" failure mode this repo killed in the lookup harness in Cycle 6: the dispatch harness re-implemented the logic and could pass all its checks while describing a fantasy. `verify-dispatcher.mjs` is rewritten against the REAL router: 108 routing decisions through the shipped code (three viewer shapes: pleb/admin/dev) plus 11 exact contract assertions (case-insensitivity, slash-only explanation, admin/dev visibility in both suggestion lanes, junk-input ignoring, typo suggestion, starts-with lookup).
+- **`>help`'s not-found list uses the shared `formatLookupDescription`** (char budget + entry cap + "and N more" pointer) instead of a hand-rolled 8-line list that could drift past Discord's limits.
+
+### The taxonomy completes
+- **`DatabaseError` was dead code — now it's real.** Raw better-sqlite3 `SqliteError`s (locked DB, corruption, constraint surprises beyond the service layer) fell through `mapErrorToReply` as UNKNOWN: the user saw the generic "Something went wrong" and the dev channel got the crash-class devlog instead of the dedicated Database Error one. A new `asTaxonomyError()` normalizer (stack preserved for the devlog) runs at the top of both dispatchers' catch paths. Pinned with a three-way unit probe (SqliteError → DatabaseError; plain errors untouched; taxonomy classes round-trip).
+- **A crashing command can't take the dispatcher down**: pinned by driving the REAL `messageCreate.execute` with a planted command that throws a raw error — the dispatcher survives and replies generically.
+
+### Docs can't lie about counts anymore
+- **verify-docs now enforces the unit-test and timer counts** it previously never checked — the gap that let the PR template's "40 unit" claim lie by four tests for several releases. Unit count derives from `test(` blocks in the source; timer count from the harness's PASS lines; both checked against README AND the PR/MR templates alongside the existing integration/embed/lookup pins.
+
+### The long tail (every remaining audit nit)
+- **`/warn add` no longer broadcasts the target's warning count** — the action stays public (consistent with kick/ban), but the count is record data and record visibility is ephemeral-only (the Cycle-7 matrix).
+- **Webhook URLs are redacted** in both error details and the log mirror (id/token pairs in the path — a secret shape the bot-token regex never caught).
+- **Soft restarts announce offline** before recycling the client, so every "Bot Online" pairs with an offline embed in the dev-log.
+- **AFK/remindme/poll no longer double-log** — the service layer keeps the canonical line (all callers log through it); the command's duplicate is gone.
+- **Process-level events log under a `PROC` tag** (mirrored) instead of the misleading `BOOT`; the client 'error' listener uses the real logger; unknown slash commands log under `CMD` not `EVENT`.
+- **Dead code removed**: `EMBED_COLORS.info`, logSink's write-only `totalSent`, `CooldownError`'s never-read `retryAfterSeconds` (its mapErrorToReply branch marked honestly as dispatch-intercepted defense-in-depth), the orphaned logTag docblock in collection.ts.
+- Comment truths: the enqueueMirror doc no longer claims CONFIRM isn't mirrored, migration 003's terminal-state comment names both outcomes, the boot log names the sync pragma.
+
+### Verification
+- Full loop: 54 unit · 191 integration · 88 embed · 25 lookup · 3 timer · dispatcher torture (now with 11 contract assertions) · 31 doc checks (up from 27).
+
 ## v1.1.1 — 2026-09-07 (Cycle I: adversarial audit — lifecycle, injection, consistency)
 
 **A full-repo adversarial audit** (four parallel deep-audit passes: commands+lib, core+services+repos, security/leak, docs+tests) surfaced ~60 findings across every layer — every behavioral one fixed here and pinned by a regression check that runs in CI.

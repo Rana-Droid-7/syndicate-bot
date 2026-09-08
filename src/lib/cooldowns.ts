@@ -34,7 +34,6 @@ export class Cooldowns {
         const retryAfter = Math.ceil((existing - now) / 1000);
         throw new CooldownError(
           `You're using this command too quickly — try again in **${retryAfter}s**.`,
-          retryAfter,
         );
       }
       this.hits.delete(key);

@@ -36,7 +36,6 @@ interface SinkState {
   timer: NodeJS.Timeout | null;
   client: Client | null;
   channelId: string | null;
-  totalSent: number;
   /** Cached channel object — fetch once, reuse until it breaks. */
   channel: TextBasedChannel | null;
   /** Back off temporarily after a delivery failure. */
@@ -48,7 +47,6 @@ const state: SinkState = {
   timer: null,
   client: null,
   channelId: null,
-  totalSent: 0,
   channel: null,
   pausedUntil: 0,
 };
@@ -118,7 +116,6 @@ function flush(): Promise<void> {
       if (sent >= MAX_SENDS_PER_FLUSH) break; // drop the tail, never flood
       const body = chunk.join("\n").slice(0, MAX_BATCH_CHARS);
       await channel.send({ content: `\`\`\`\n${body}\n\`\`\`` });
-      state.totalSent += chunk.length;
       sent++;
     }
   };
@@ -135,7 +132,7 @@ function flush(): Promise<void> {
 /**
  * Queue one log line for the private channel. Tags decide what
  * reaches the channel at all (see shouldMirror below) — the sink
- * deliberately does NOT mirror ERROR/CONFIRM-style noise that
+ * deliberately does NOT mirror ERROR-level noise (devlog embeds cover real errors) that
  * already gets proper dev-log embeds.
  */
 export function enqueueMirror(tag: string, level: string, message: string): void {
@@ -160,6 +157,8 @@ export function enqueueMirror(tag: string, level: string, message: string): void
 
 const CONTROL_CHARS = /[\u0000-\u0008\u000B-\u001F\u007F]/g;
 const TOKEN_SHAPE = /(?:Bot\s+)?[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}/g;
+// Webhook URLs carry their own id/token pair in the path.
+const WEBHOOK_SHAPE = /discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/[\w-]+\/[\w-]+/gi;
 
 /** Exported for the verification harness. */
 export function sanitizeMirrorLine(message: string): string {
@@ -167,6 +166,7 @@ export function sanitizeMirrorLine(message: string): string {
     message
       .replace(CONTROL_CHARS, "")
       .replace(TOKEN_SHAPE, "[redacted]")
+    .replace(WEBHOOK_SHAPE, "webhook:[redacted]")
       // The mirror body ships inside a ``` fence. A user arg carrying
       // ``` (e.g. >suggest "``` @everyone") would otherwise break out
       // of the code block in the private logs channel — the same
@@ -197,6 +197,7 @@ const MIRRORED_TAGS = new Set([
   "CALC",
   "DEVLOG",
   "BANNER",
+  "PROC", // process-level events (unhandled rejection, crash deadline)
 ]);
 
 function shouldMirror(tag: string, level: string): boolean {

@@ -7,7 +7,6 @@ import { ContextError, UserInputError } from "../../lib/errors.js";
 import { escapeInlineCode, safeBoldText, truncate } from "../../lib/validation.js";
 import { reminderService } from "../../services/reminders.js";
 import { discordTimestamp } from "../../lib/format.js";
-import { log } from "../../core/logger.js";
 
 const MAX_DELAY_MS = 30 * 24 * 60 * 60 * 1000; // 30-day cap
 // Matches the DB CHECK constraint. Truncation happens AFTER escaping
@@ -94,8 +93,9 @@ const command: Command = {
       dueUnixMs,
     );
 
+    // reminderService.create's schedule() call logs the set (canonical
+    // line) — no duplicate here.
     const unixSeconds = Math.floor(dueUnixMs / 1000);
-    log.info("TIMER", `Reminder set by ${message.author.id} in channel ${message.channelId}, due ${unixSeconds}: "${safeText}"`);
     await message.reply({
       embeds: [
         baseEmbed()

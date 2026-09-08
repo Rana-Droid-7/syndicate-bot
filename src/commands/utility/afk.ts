@@ -4,7 +4,6 @@ import { baseEmbed, successEmbed, errorEmbed } from "../../lib/embeds.js";
 import { ContextError } from "../../lib/errors.js";
 import { afkService } from "../../services/afk.js";
 import { formatDuration } from "../../lib/format.js";
-import { log } from "../../core/logger.js";
 
 const command: Command = {
   category: "utility",
@@ -39,7 +38,6 @@ const command: Command = {
         await message.reply({ embeds: [errorEmbed("You weren't AFK in this server.")] });
         return;
       }
-      log.info("AFK", `${message.author.tag} (${message.author.id}) ran >afk off in guild ${guildId}.`);
       await message.reply({
         embeds: [
           successEmbed(`AFK status cleared. You were away for **${formatDuration(cleared.awayMs)}**.`),
@@ -54,7 +52,6 @@ const command: Command = {
     if (!rawReason && afkService.isAfk(guildId, message.author.id)) {
       const cleared = afkService.clear(guildId, message.author.id);
       if (cleared) {
-        log.info("AFK", `${message.author.tag} (${message.author.id}) toggled AFK off in guild ${guildId}.`);
         await message.reply({
           embeds: [successEmbed(`AFK status cleared. You were away for **${formatDuration(cleared.awayMs)}**.`)],
         });
@@ -62,8 +59,9 @@ const command: Command = {
       }
     }
 
+    // The service logs the set (canonical line — the messageCreate
+    // auto-clear path logs through it too); no duplicate here.
     const status = afkService.set(guildId, message.author.id, rawReason || "AFK");
-    log.info("AFK", `${message.author.tag} (${message.author.id}) set AFK in guild ${guildId}: ${JSON.stringify(status.reason)}`);
     await message.reply({
       embeds: [
         baseEmbed().setDescription(`💤 ${message.author}, I've marked you as AFK: **${status.reason}**`),

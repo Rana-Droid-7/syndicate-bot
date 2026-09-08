@@ -19,7 +19,7 @@ import { acquireSingleInstanceLock, releaseSingleInstanceLock } from "./lib/sing
 // interactive collector should already catch its own errors, but
 // this is the last line of defense for anything that slips through.
 process.on("unhandledRejection", (reason) => {
-  log.error("BOOT", "Unhandled promise rejection (caught by global safety net, process continues)", reason);
+  log.error("PROC", "Unhandled promise rejection (caught by global safety net, process continues)", reason);
 });
 
 // An UNCAUGHT EXCEPTION is different: by Node's own guidance the
@@ -34,7 +34,7 @@ process.on("uncaughtException", (error) => {
   if (shutdownForCrashStarted) return; // a second crash during shutdown — just bail out
   shutdownForCrashStarted = true;
 
-  log.error("BOOT", "Uncaught exception — attempting graceful shutdown before exiting", error);
+  log.error("PROC", "Uncaught exception — attempting graceful shutdown before exiting", error);
 
   const client = globalThis.__syndicateClient;
   if (!client) {
@@ -65,7 +65,7 @@ process.on("uncaughtException", (error) => {
   })();
 
   const deadline = setTimeout(() => {
-    log.error("BOOT", "Graceful crash shutdown missed its 5s deadline — forcing exit.");
+    log.error("PROC", "Graceful crash shutdown missed its 5s deadline — forcing exit.");
     process.exit(1);
   }, 5000);
 
@@ -229,6 +229,12 @@ async function main() {
     // Stand down timers, drain the mirror queue while connected.
     reminderService.beginShutdown();
     pollService.beginShutdown();
+    // Announce offline BEFORE the connection drops — every "Bot
+    // Online" from the upcoming boot pairs with this embed in the
+    // dev-log (ready.ts's pairing contract).
+    if (currentClient) {
+      await announceOffline(currentClient, `Soft restart (${reason})`, requestedBy).catch(() => null);
+    }
     await flushLogSink().catch(() => null);
 
     const oldClient = currentClient;

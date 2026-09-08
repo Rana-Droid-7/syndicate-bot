@@ -176,7 +176,9 @@ const command: Command = {
     // create() enforces transactionally.
     pollService.assertCanCreate(message.guild.id, message.author.id);
 
-    log.info("CMD", `poll by ${message.author.tag} (${message.author.id}): "${question}" with ${options.length} options for ${hours}h`);
+    // The dispatcher already logged the PREFIX dispatch line with
+    // user/guild/args — this adds only the poll-specific substance.
+    log.info("PREFIX", `poll: "${question}" with ${options.length} options for ${hours}h`);
 
     // One message: the poll, plus a bot-authored content line above it
     // telling everyone when it REALLY closes. The content line matters

@@ -14,7 +14,7 @@ body:
     id: version
     attributes:
       label: Bot version (`>bot`)
-      placeholder: "1.1.1"
+      placeholder: "1.1.2"
   - type: dropdown
     id: surface
     attributes:

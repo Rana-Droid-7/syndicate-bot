@@ -95,7 +95,6 @@ const command: Command = {
             .addFields(
               { name: "User", value: `${targetUser.tag} (\`${targetUser.id}\`)`, inline: true },
               { name: "Moderator", value: `${interaction.user.tag}`, inline: true },
-              { name: "Total Warnings", value: `${count}`, inline: true },
               { name: "Reason", value: reason, inline: false },
             )
             .setFooter({ text: "Warnings are persistent — they survive restarts." }),

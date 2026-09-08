@@ -589,17 +589,24 @@ console.log("\n=== REGRESSIONS (audit fixes) ===");
 
   // Fix 4: >rate <valid-id> must resolve, not rate self
   // (mock fetch returns null for unknown IDs -> clean error, never silent self-rate)
+  // Cycle-I: the error is a taxonomy throw now (shared rendering +
+  // cooldown refund), not an internal reply.
   const RT = "./dist/commands/coolsies/rate.js";
   const mockFetchFails = { ...{}, client: { users: { fetch: async () => null } } };
   const cmd = (await import(RT)).default;
   const msg = makeMessage(">rate 123456789012345678", { authorId: uid });
-  // rebind per-run capture
   const myReplies = [];
   msg.reply = async (p) => { myReplies.push(String(p)); return {}; };
   msg.client = mockFetchFails.client;
-  await cmd.prefixExecute(msg, ["123456789012345678"]);
-  report("rate: unresolvable ID -> explicit error (not silent self-rate)",
-    myReplies.length > 0 && !myReplies[0].includes("6666"), myReplies[0]?.slice(0, 80));
+  let threw = null;
+  try {
+    await cmd.prefixExecute(msg, ["123456789012345678"]);
+  } catch (e) {
+    threw = e;
+  }
+  report("rate: unresolvable ID -> UserInputError (not silent self-rate)",
+    threw?.name === "UserInputError" && myReplies.length === 0,
+    `threw=${threw?.name} replies=${myReplies.length}`);
 }
 
 // ============================================================
@@ -1516,15 +1523,56 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
       Number.isInteger(pp) && Number.isInteger(wp), `p=${pp} w=${wp}`);
   }
 
-  // --- 5) prefix-lane unmapped errors send a devlog (parity with the
-  // slash lane) — asserted by interception, not absence ---
+  // --- 5) prefix-lane unmapped errors reach the user through the
+  // shared handler AND the dispatcher survives them (the devlog call
+  // inside is fire-and-forget with .catch(() => null) — parity with
+  // the slash lane is structural; the REAL dispatch path is what
+  // needs proving: messageCreate.execute with a command whose
+  // execution throws a raw unexpected error) ---
   {
-    const { sendDevLog } = await import("./dist/lib/devlog.js");
-    // devlog with no devLogChannelId configured is a no-op that
-    // resolves — the parity contract is structural. Instead assert
-    // the handler exists and never throws on the taxonomy error path
-    // (the sendDevLog call is fire-and-forget with .catch(() => null)).
-    report("cycle-I: prefix error handler ships devlog parity (structural)", typeof sendDevLog === "function");
+    const eventMod = await import("./dist/events/messageCreate.js");
+    const { loadCommands } = await import("./dist/handlers/commandHandler.js");
+    const { SyndicateClient } = await import("./dist/core/client.js");
+
+    const probeClient = new SyndicateClient({ intents: [] });
+    await loadCommands(probeClient);
+    // Plant a command whose execute always throws a raw error.
+    probeClient.prefixCommands.set("crashprobe", {
+      category: "utility", surface: "prefix-only", name: "crashprobe",
+      usage: "crashprobe", prefixExecute: async () => { throw new Error("synthetic failure"); },
+    });
+
+    const replies = [];
+    const raw = ">crashprobe boom";
+    const msg = makeMessage(raw);
+    // The dispatcher resolves commands through message.client — point
+    // it at the probe client carrying the planted crash command.
+    msg.client = probeClient;
+    msg.reply = async (p) => { replies.push(p); return { id: "x", edit: async () => null, createMessageComponentCollector: () => ({ on: () => {}, stop: () => {} }) }; };
+    let dispatcherCrashed = false;
+    try {
+      await eventMod.default.execute(msg);
+    } catch {
+      dispatcherCrashed = true; // the event wrapper normally catches; a throw here is a harness-visible bug
+    }
+    const replied = replies.some((p) => JSON.stringify(p).includes("Something went wrong"));
+    report("cycle-I: prefix dispatcher survives a crashing command and replies generically",
+      !dispatcherCrashed && replied, `crashed=${dispatcherCrashed} replies=${replies.length}`);
+  }
+
+  // --- 5b) SqliteError normalizes into the DatabaseError taxonomy ---
+  {
+    const { asTaxonomyError, DatabaseError } = await import("./dist/lib/errors.js");
+    const raw = Object.assign(new Error("database is locked"), { name: "SqliteError" });
+    const normalized = asTaxonomyError(raw);
+    report("cycle-I: raw SqliteError maps to DatabaseError (dedicated user text + devlog)",
+      normalized instanceof DatabaseError, `got ${normalized?.constructor?.name}`);
+    const untouched = asTaxonomyError(new Error("plain"));
+    report("cycle-I: non-DB errors pass through the normalizer untouched",
+      untouched instanceof Error && !(untouched instanceof DatabaseError), `got ${untouched?.constructor?.name}`);
+    const kept = asTaxonomyError(new (await import("./dist/lib/errors.js")).UserInputError("x"));
+    report("cycle-I: taxonomy classes round-trip unchanged",
+      kept instanceof (await import("./dist/lib/errors.js")).UserInputError, `got ${kept?.constructor?.name}`);
   }
 
   // --- 6) event-loader boot-fail: an invalid event file must REFUSE

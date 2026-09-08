@@ -5,7 +5,7 @@ import { config } from "../core/config.js";
 import { baseEmbed, errorEmbed } from "../lib/embeds.js";
 import { sendDevLog } from "../lib/devlog.js";
 import { cooldowns } from "../lib/cooldowns.js";
-import { mapErrorToReply } from "../lib/errors.js";
+import { asTaxonomyError, mapErrorToReply } from "../lib/errors.js";
 import { ContextError, UserInputError, PermissionError } from "../lib/errors.js";
 import { CooldownError } from "../lib/errors.js";
 import { cooldownCountdownEmbed, startCooldownCountdown } from "../lib/cooldownCountdown.js";
@@ -58,7 +58,10 @@ const event: BotEvent<"interactionCreate"> = {
       const cmd = command as { execute?: (i: ChatInputCommandInteraction) => Promise<void> };
       if (!cmd.execute) throw new ContextError("This command doesn't run as a slash command.");
       await cmd.execute(commandInteraction);
-    } catch (error) {
+    } catch (thrown) {
+      // Same SqliteError normalization as the prefix lane — one
+      // taxonomy, both dispatchers.
+      const error = asTaxonomyError(thrown);
       // Pre-effect failures (bad input, wrong context, permissions)
       // refund the cooldown — retrying immediately must not lock.
       if (error instanceof UserInputError || error instanceof ContextError || error instanceof PermissionError) {

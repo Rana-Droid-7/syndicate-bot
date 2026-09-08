@@ -17,6 +17,9 @@ const CENSOR_PATTERNS: { pattern: RegExp; replacement: string }[] = [
   { pattern: /\bBearer\s+[A-Za-z0-9._-]{10,}/gi, replacement: "Bearer [redacted]" },
   // Connection strings with embedded credentials.
   { pattern: /:\/\/[^\s/:@]+:[^\s/@]+@/g, replacement: "://[redacted]@" },
+  // Webhook URLs — id/token in the path, no dots for the token shape
+  // above to catch. Same shape family as the bot token.
+  { pattern: /discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/[\w-]+\/[\w-]+/gi, replacement: "webhook:[redacted]" },
 ];
 
 /** Truncates and censors error text for safe display in a log channel. */

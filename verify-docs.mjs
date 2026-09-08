@@ -98,20 +98,32 @@ await loadCommands(client);
 {
   // Real counts come from SPAWNING the harnesses and counting their
   // pass lines — static grep can't see report() calls inside loops.
+  // Unit + timer counts come from their own sources: test() blocks
+  // in the unit suite (regex-counted) and PASS lines in the timer
+  // harness — closing the gap that let the PR template's "40 unit"
+  // claim lie by four tests for several releases.
   const { spawnSync } = await import("node:child_process");
   const run = (script) =>
     spawnSync(process.execPath, [script], { cwd: process.cwd(), encoding: "utf8", timeout: 120_000 });
   const intRun = run("verify-integration.mjs");
   const embRun = run("verify-embeds.mjs");
   const lookRun = run("verify_lookup.mjs");
+  const timerRun = run("verify_timer.mjs");
   const count = (out) => [...(out.stdout ?? "").matchAll(/^✅ /gm)].length;
 
   const integrationCount = count(intRun);
   const embedCount = count(embRun);
   const lookupCount = count(lookRun);
-  const harnessesHealthy = intRun.status === 0 && embRun.status === 0 && lookRun.status === 0;
-  report("doc-count probe: all three harnesses ran green (prerequisite)", harnessesHealthy,
-    `statuses: int=${intRun.status} emb=${embRun.status} look=${lookRun.status}`);
+  const timerCount = (timerRun.stdout ?? "").match(/^✅ PASS/gm)?.length ?? 0;
+  // Unit tests: count test() declarations in the SOURCE (the compiled
+  // dist file mirrors src; src is the truth humans edit).
+  const unitSource = read("src/tests/unit.test.ts");
+  const unitCount = [...unitSource.matchAll(/^test\(/gm)].length;
+
+  const harnessesHealthy = intRun.status === 0 && embRun.status === 0 && lookRun.status === 0 && timerRun.status === 0;
+  report("doc-count probe: all four harnesses ran green (prerequisite)", harnessesHealthy,
+    `statuses: int=${intRun.status} emb=${embRun.status} look=${lookRun.status} timer=${timerRun.status}`);
+  report("unit-test count derived from the source is nonzero", unitCount > 0, `counted ${unitCount}`);
 
   const readme = read("README.md");
   // README phrasing: "**157** integration/attack" — count BEFORE the label
@@ -123,12 +135,18 @@ await loadCommands(client);
       `docs: ${n("embed-output")}, real: ${embedCount}`);
     report("README lookup count is true", n("lookup") === lookupCount,
       `docs: ${n("lookup")}, real: ${lookupCount}`);
+    report("README unit count is true", n("unit") === unitCount,
+      `docs: ${n("unit")}, real: ${unitCount}`);
+    report("README timer count is true", n("timer") === timerCount,
+      `docs: ${n("timer")}, real: ${timerCount}`);
 
     const tmpl = read(".github/PULL_REQUEST_TEMPLATE.md");
     const t = (label) => parseInt(tmpl.match(new RegExp("[0-9]+ " + label))?.[0]?.split(" ")[0] ?? "0", 10);
     report("PR template integration count is true", t("integration") === integrationCount, `template: ${t("integration")}, real: ${integrationCount}`);
     report("PR template embed count is true", t("embed") === embedCount, `template: ${t("embed")}, real: ${embedCount}`);
     report("PR template lookup count is true", t("lookup") === lookupCount, `template: ${t("lookup")}, real: ${lookupCount}`);
+    report("PR template unit count is true", t("unit") === unitCount, `template: ${t("unit")}, real: ${unitCount}`);
+    report("PR template timer count is true", t("timer") === timerCount, `template: ${t("timer")}, real: ${timerCount}`);
   }
 
   // MR template: identical to PR template modulo the PR/MR word

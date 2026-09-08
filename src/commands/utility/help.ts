@@ -20,7 +20,8 @@ import {
   buildInviteButtonRow,
   type HelpViewer,
 } from "../../lib/help.js";
-import { findClosestMatch, findStartsWithMatches, type SuggestionCandidate } from "../../lib/suggest.js";
+import { findClosestMatch, findStartsWithMatches, formatLookupDescription, type SuggestionCandidate } from "../../lib/suggest.js";
+import { visibleCandidatesFor } from "../../lib/prefixRoute.js";
 
 const COLLECTOR_TIMEOUT_MS = 180_000;
 
@@ -42,19 +43,16 @@ function buildUnknownCommandEmbed(
     ).addFields({ name: "Try this", value: `\`${prefix}help ${name}\``, inline: false });
   }
 
-  // 2) Anything that starts with (or contains) the query?
+  // 2) Anything that starts with (or contains) the query? The SAME
+  // shared formatter the dispatcher's lookup lane uses — one
+  // renderer (char budget, entry cap, "and N more" pointer) instead
+  // of a hand-rolled list that could drift past Discord's limits.
   const starts = findStartsWithMatches(candidates, query.toLowerCase());
   if (starts.length > 0) {
-    const lines = starts
-      .slice(0, 8)
-      .map((m) => {
-        const c = m.command as Command;
-        const n = c.name ?? c.data?.name ?? "?";
-        const typed = c.surface === "slash-only" ? `/${n}` : `${prefix}${n}`;
-        return `• **${typed}** — _${c.description}_`;
-      })
-      .join("\n");
-    return errorEmbed(`I don't know a command called \`${prefix}${escapeInlineCode(query)}\`, but these look close:\n\n${lines}`);
+    const list = formatLookupDescription(starts);
+    return errorEmbed(
+      `I don't know a command called \`${prefix}${escapeInlineCode(query)}\`, but these look close:\n\n${list.description}`,
+    );
   }
 
   // 3) Nothing close — point at the menu.
@@ -66,15 +64,11 @@ function buildUnknownCommandEmbed(
     );
 }
 
-/** Commands visible to this viewer for lookup purposes (admin/owner filtered). */
+// Visibility filtering is the shared implementation in
+// lib/prefixRoute.ts — help and the dispatcher must never drift on
+// which categories a viewer can see.
 function visibleCandidates(client: SyndicateClient, viewer: HelpViewer): SuggestionCandidate[] {
-  const isAdmin = viewer.isAdminHere ?? false;
-  const isDev = config.developerIds.includes(viewer.userId);
-  return client.suggestionCandidates.filter((c) => {
-    if (c.command.category === "admin") return isAdmin;
-    if (c.command.category === "owner") return isDev;
-    return true;
-  });
+  return visibleCandidatesFor(client, { userId: viewer.userId, isAdminHere: viewer.isAdminHere ?? false });
 }
 
 const command: Command = {

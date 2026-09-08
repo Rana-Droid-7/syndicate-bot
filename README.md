@@ -1,4 +1,4 @@
-# Syndicate Bot — v1.1.1
+# Syndicate Bot — v1.1.2
 
 A polished Discord bot by **Ranajoy Roy**: utility, fun ("Coolsies"),
 moderation, admin, and developer tiers — built with discord.js +
@@ -92,7 +92,7 @@ prefix input gets a **starts-with lookup** (`>se` → serverinfo,
 setnick, userinfo...) or a **typo suggestion** (`>halp` → "did you
 mean **>help**?").
 
-## Commands (v1.1.1)
+## Commands (v1.1.2)
 
 ### 🛠️ Utility — prefix only, open to everyone
 `help`, `ping`, `bot`, `invite`, `changelog`, `suggest`, `afk`, `remindme`, `poll`, `userinfo`, `serverinfo`, `avatar`, `banner`, `timestamp`, `snowflake`, `roll`, `calculate` (aliases: `calc`, `math`; `whois`, `ui`; `av`, `pfp`; `ts`, and more).
@@ -140,7 +140,8 @@ src/
                 devlog, collection (shared joke/8ball management), shutdown,
                 restartHook (in-process /boot Reboot), cooldownCountdown (live
                 cooldown timers), singleInstanceLock (double-boot guard),
-                rateLimit (shared 429 detection)
+                rateLimit (shared 429 detection), prefixRoute (the shared
+                prefix-dispatch decision core + visibility gates)
   services/     afk, reminders, warnings, suggestions, jokes, eightball,
                 polls (open-poll recap lifecycle) (business logic)
   repositories/ afk, reminders, warnings, suggestions, jokes, eightball, polls,
@@ -169,7 +170,7 @@ else touches SQL.
 ## Development
 
 - `npm test` — build + unit suite (parsers, cooldowns, validation, dice distribution, suggestion engine, regression pins)
-- `npm run verify` — everything: strict typecheck, build, **54** unit tests, and **six** verification harnesses (**188** integration/attack + **88** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
+- `npm run verify` — everything: strict typecheck, build, **54** unit tests, and **six** verification harnesses (**191** integration/attack + **88** embed-output + **25** lookup + **3** timer checks + dispatcher torture). Same loop CI runs on every push (GitHub Actions + GitLab CI included).
 - [CHANGELOG.md](CHANGELOG.md) — every release's full history; `changelog` in-chat shows the recent highlights
 - `verify_timer.mjs` — chained-timer regression (the >24.8-day setTimeout bug)
 - `verify_lookup.mjs` — prefix lookup/suggestion scenarios

@@ -6,7 +6,6 @@ export const EMBED_COLORS = {
   success: 0x57f287, // Discord green
   error: 0xed4245, // Discord red
   warning: 0xfee75c, // Discord yellow
-  info: 0x5865f2,
 } as const;
 
 /**

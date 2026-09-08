@@ -53,7 +53,7 @@ export function getDb(): SqliteDatabase {
   // changes.
   db.pragma("synchronous = NORMAL");
 
-  log.info("BOOT", `Database open: ${DB_PATH} (WAL, FK on)`);
+  log.info("BOOT", `Database open: ${DB_PATH} (WAL, FK on, sync NORMAL)`);
   return db;
 }
 
@@ -280,7 +280,8 @@ const MIGRATIONS: MigrationFile[] = [
     // user-set duration elapses, the bot ends the poll via the official
     // Expire Poll endpoint (decimal-hour durations end EARLY — Discord
     // itself schedules expiry in whole hours only) and posts the final
-    // tally as a reply. Rows go terminal ('closed') exactly once.
+    // tally as a reply. Rows go terminal exactly once ('closed' when
+    // recapped, 'failed' when the surface is gone).
     name: "003_poll_recaps",
     sql: `
       CREATE TABLE IF NOT EXISTS polls (
