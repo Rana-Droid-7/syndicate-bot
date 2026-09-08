@@ -717,12 +717,15 @@ console.log("\n=== REGRESSIONS (audit round 3) ===");
     const harnessLines = exportBefore ? exportBefore.split("\n").filter((l) => l.trim()).length : 0;
     report("suggest export: harness writes go to the throwaway (not data/suggestions.txt)",
       harnessLines > 0, `throwaway lines=${harnessLines}`);
-    // The real export must NOT contain harness markers after a full run.
-    if (exists("data/suggestions.txt")) {
-      const real = readFileSync("data/suggestions.txt", "utf8");
-      const polluted = real.includes("user_2222") || real.includes("Test Guild (999999999999999999)") || real.includes("rm -rf");
-      report("suggest export: production file free of harness pollution", !polluted);
-    }
+    // The real export must NOT contain harness markers after a full
+    // run. UNCONDITIONAL: a missing file (fresh CI checkout — the
+    // export is gitignored) IS the clean state; the conditional form
+    // used to silently skip this report on runners, drifting the
+    // harness count by one and failing the docs-count enforcement.
+    const real = exists("data/suggestions.txt") ? readFileSync("data/suggestions.txt", "utf8") : "";
+    const polluted = real.includes("user_2222") || real.includes("Test Guild (999999999999999999)") || real.includes("rm -rf");
+    report("suggest export: production file free of harness pollution", !polluted,
+      real ? "" : "(no production export on this machine — clean by absence)");
   }
 
   // --- Cycle-6: collection list pagination clamps to the last page ---
